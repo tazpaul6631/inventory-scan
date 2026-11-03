@@ -4,26 +4,18 @@ import { isNative } from '@/adapters/platform'
 import { query, run, flushDatabase } from '@/storage/database'
 import { writeTextFile } from '@/storage/files'
 import { now } from '@/utils/id'
-import { listProducts } from '@/services/repositories/products'
-import { listMedia } from '@/services/repositories/media'
 import { listScanLogs } from '@/services/repositories/scans'
-import { listScaleReadings } from '@/services/repositories/scale'
-import { listOutbox } from '@/services/repositories/outbox'
 
 export async function createBackup(): Promise<string> {
   await flushDatabase()
   const snapshot = {
     version: 1,
     createdAt: now(),
-    products: await listProducts(),
-    media: await listMedia(),
     scans: await listScanLogs(),
-    scaleReadings: await listScaleReadings(),
-    outbox: await listOutbox(),
     settings: await query('SELECT key, value FROM settings'),
   }
-  const filename = `srcvip-backup-${dayjs().format('YYYYMMDD-HHmmss')}.json`
-  await writeTextFile(`SRC VIP/${filename}`, JSON.stringify(snapshot, null, 2), 'documents')
+  const filename = `inventory-scan-backup-${dayjs().format('YYYYMMDD-HHmmss')}.json`
+  await writeTextFile(`Inventory Scan/${filename}`, JSON.stringify(snapshot, null, 2), 'documents')
   await run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('lastBackupAt', ?)`, [String(now())])
   return filename
 }

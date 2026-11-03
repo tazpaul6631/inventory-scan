@@ -12,8 +12,8 @@ export async function loadSession(): Promise<Session | null> {
   if (!raw) return null
   try {
     const data = JSON.parse(raw) as Session
-    if (!data?.email) return null
-    return data
+    if (!data?.email && !data?.factory && !data?.cycle) return null
+    return { ...data, email: data.email ?? '' }
   } catch {
     return null
   }

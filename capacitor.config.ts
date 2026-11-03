@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.srcvip.app',
-  appName: 'SRC VIP',
+  appName: 'Inventory Scan',
   webDir: 'dist',
   server: {
     // HTTP page so the WebView can call an HTTP API (https://localhost + http://API = mixed content).
@@ -19,7 +19,7 @@ const config: CapacitorConfig = {
       iosIsEncryption: false,
       androidIsEncryption: false,
       electronIsEncryption: false,
-      electronWindowsLocation: 'C:\\ProgramData\\SRC VIP\\Databases',
+      electronWindowsLocation: 'C:\\ProgramData\\Inventory Scan\\Databases',
       electronMacLocation: 'Databases',
       electronLinuxLocation: 'Databases',
     },

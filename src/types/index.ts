@@ -71,6 +71,12 @@ export interface Session {
   roleName?: string
   accessToken?: string
   refreshToken?: string
+  factory?: string
+  factoryName?: string
+  factoryId?: number
+  cycle?: string
+  cycleId?: number
+  abbr?: string
 }
 
 export interface AppSettings {

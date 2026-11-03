@@ -12,11 +12,10 @@ import Dialog from 'primevue/dialog'
 import { initDatabase } from '@/storage/database'
 import { useNetworkStore } from '@/stores/network'
 import { useSettingsStore } from '@/stores/settings'
-import { useSyncStore } from '@/stores/sync'
 import { useAuthStore } from '@/stores/auth'
 import { createBackup, watchAppPause } from '@/services/backup'
 import { applyLocale, normalizeLocale } from '@/i18n'
-import { detectDeviceShell, homePathForShell, isNative } from '@/adapters/platform'
+import { homePathForShell, isNative, pathMatchesShell } from '@/adapters/platform'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -36,7 +35,6 @@ function stopRedirectTimer() {
 }
 
 watch(unauthorized, (open) => {
-  if (open) useSyncStore().stopFromApi()
   stopRedirectTimer()
   if (!open) return
   countdown.value = 3
@@ -63,18 +61,16 @@ onMounted(async () => {
     const settings = useSettingsStore()
     await settings.load()
     applyLocale(normalizeLocale(settings.current.locale))
-    await useSyncStore().refresh()
     await auth.load()
-    if (!auth.isLoggedIn && !route.meta.public) {
-      // await router.replace({ name: 'login', query: { redirect: route.fullPath } })
-    }
-    const home = homePathForShell()
-    if (isNative() || detectDeviceShell() === 'mobile') {
-      if (!route.path.startsWith('/app/mobile')) {
-        await router.replace(home)
+    if (!auth.isLoggedIn) {
+      if (route.name !== 'login') {
+        await router.replace({
+          name: 'login',
+          query: route.path === '/login' ? {} : { redirect: route.fullPath },
+        })
       }
-    } else if (route.path === '/login') {
-      await router.replace(home)
+    } else if (!pathMatchesShell(route.path)) {
+      await router.replace(homePathForShell())
     }
     if (isNative()) {
       watchAppPause(() => {
@@ -101,7 +97,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Toast position="bottom-center" :pt="{ closeButton: { style: { display: 'none' } } }" />
+  <Toast position="top-center" :pt="{ closeButton: { style: { display: 'none' } } }" />
   <ConfirmDialog :closable="false" dismissable-mask />
   <Dialog :visible="unauthorized" modal :closable="false" :dismissable-mask="false" :close-on-escape="false"
     :header="t('auth.sessionExpiredTitle')" :style="{ width: 'min(420px, 96vw)' }">

@@ -1,6 +1,7 @@
 import { http } from '@/services/http'
 import type {
   ApiResponse,
+  ChangeUserPasswordRequest,
   DeleteUserRequest,
   UserCreateRequest,
   UserQueryResult,
@@ -27,17 +28,22 @@ export async function queryUserGetOne(id: string) {
 }
 
 export async function userCreate(params: UserCreateRequest) {
-  const { data } = await http.post<ApiResponse<ViewUser>>('/user/uc/create', params)
+  const { data } = await http.post<ApiResponse<boolean>>('/user/uc/create', params)
   return data
 }
 
 export async function updateUser(id: string, params: UpdateUserRequest) {
-  const { data } = await http.patch<ApiResponse<ViewUser>>(`/user/uc/update/${id}`, params)
+  const { data } = await http.patch<ApiResponse<boolean>>(`/user/uc/update/${id}`, params)
+  return data
+}
+
+export async function changePasswordUser(id: string, params: ChangeUserPasswordRequest) {
+  const { data } = await http.patch<ApiResponse<boolean>>(`/user/uc/changepassword/${id}`, params)
   return data
 }
 
 export async function deleteUser(id: string, params?: DeleteUserRequest) {
-  const { data } = await http.delete<ApiResponse<unknown>>(`/user/uc/delete/${id}`, { data: params })
+  const { data } = await http.delete<ApiResponse<boolean>>(`/user/uc/delete/${id}`, { data: params })
   return data
 }
 

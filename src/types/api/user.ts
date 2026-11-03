@@ -1,5 +1,5 @@
 export interface UserValidateRequest {
-  email: string
+  code: string
   password: string
   loginAt: string
 }
@@ -17,10 +17,14 @@ export interface ViewPlatformPermission {
 
 export interface ViewValidateUser {
   id: string
+  keyword?: string | null
   code?: string | null
   email?: string | null
   name?: string | null
-  roleId: string
+  password?: string | null
+  allowWeb?: boolean
+  isActive?: boolean
+  roleId?: string
   roleName?: string | null
   avatar?: string | null
   accessToken?: string | null
@@ -34,18 +38,25 @@ export interface UserQueryResultRequest {
   id?: string | null
   ids?: string[] | null
   keyword?: string | null
-  roleId?: string | null
-  roleIds?: string[] | null
+  code?: string | null
+  allowWeb?: boolean | null
   isActive?: boolean | null
+  createdAtFrom?: string | null
+  createdAtTo?: string | null
+  createdBy?: string | null
+  updatedAtFrom?: string | null
+  updatedAtTo?: string | null
+  updatedBy?: string | null
 }
 
 export interface ViewUser {
   id: string
+  status?: number
+  keyword?: string | null
   code?: string | null
-  email?: string | null
   name?: string | null
-  roleId: string
-  avatar?: string | null
+  password?: string | null
+  allowWeb?: boolean
   isActive: boolean
   createdAt?: string
   createdBy?: string
@@ -65,10 +76,9 @@ export interface UserQueryResult {
 
 export interface UserCreateRequest {
   code: string
-  email: string
   name: string
-  roleId: string
   password: string
+  allowWeb: boolean
   isActive: boolean
   createdBy: string
   updatedBy: string
@@ -76,11 +86,15 @@ export interface UserCreateRequest {
 
 export interface UpdateUserRequest {
   code: string
-  email: string
   name: string
-  roleId: string
+  allowWeb: boolean
   isActive: boolean
   updatedBy: string
+}
+
+export interface ChangeUserPasswordRequest {
+  oldPassword: string
+  newPassword: string
 }
 
 export interface DeleteUserRequest {

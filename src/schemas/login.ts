@@ -1,11 +1,28 @@
 import { z } from 'zod'
 import { i18n } from '@/i18n'
 
-export function createLoginSchema() {
+export type LoginMode = 'mobile' | 'web'
+
+function staffIdField() {
   const t = i18n.global.t
+  return z.preprocess((value) => value ?? '', z.string().trim().min(1, t('validation.staffIdRequired')))
+}
+
+export function createLoginSchema(mode: LoginMode) {
+  const t = i18n.global.t
+  if (mode === 'mobile') {
+    return z.object({
+      factory: z.preprocess((value) => value ?? '', z.string().trim().min(1, t('validation.factoryRequired'))),
+      cycle: z.preprocess((value) => value ?? '', z.string().trim().min(1, t('validation.cycleRequired'))),
+      staffId: staffIdField(),
+      password: z.preprocess((value) => value ?? '', z.string().min(1, t('validation.passwordRequired'))),
+    })
+  }
   return z.object({
-    email: z.string().trim().min(1, t('validation.emailRequired')),
-    password: z.string().trim().min(1, t('validation.passwordRequired')),
+    factory: z.string().optional(),
+    cycle: z.string().optional(),
+    staffId: staffIdField(),
+    password: z.preprocess((value) => value ?? '', z.string().min(1, t('validation.passwordRequired'))),
   })
 }
 

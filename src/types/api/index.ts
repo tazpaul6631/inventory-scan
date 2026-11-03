@@ -5,6 +5,7 @@ export type {
   UserValidateRequest,
   UserCreateRequest,
   UpdateUserRequest,
+  ChangeUserPasswordRequest,
   DeleteUserRequest,
   ViewMenuPermission,
   ViewPlatformPermission,
@@ -12,3 +13,11 @@ export type {
   ViewUser,
 } from './user'
 export type { ViewRole } from './role'
+export type { ViewFactory, ViewCycle, CycleQueryResult, ViewWarehouse, ViewArea } from './category'
+export type {
+  AssetQueryResultRequest,
+  ViewAssetInfo,
+  AssetQueryResult,
+  AiScanResultCode,
+  CreateAiScanResultRequest,
+} from './asset'

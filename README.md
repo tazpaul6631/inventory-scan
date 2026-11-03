@@ -1,4 +1,4 @@
-# SRC VIP
+# Inventory Scan       
 
 App frontend offline-first (kho / POS / cân) — Vue 3, Capacitor 7, PrimeVue 4.
 
@@ -84,7 +84,7 @@ Không set `server.url` (live-reload) trong bản release — APK đọc file tr
 | Native SQLite (`Library` / app data, không `Caches`) | Bảng nghiệp vụ, outbox, settings |
 | Web OPFS `db/srcvip.db` | Cùng schema, không IndexedDB |
 | `Directory.Data` / OPFS `media/` | Ảnh, video |
-| `Documents/SRC VIP/` | Backup JSON (web: download) |
+| `Documents/Inventory Scan/` | Backup JSON (web: download) |
 | Pinia | UI / online — không persist bảng hàng |
 
 ## Hardware
@@ -131,7 +131,7 @@ npm run cap:android
 
 iOS: chỉ trên macOS — `npx cap add ios`.
 
-Push `main` hoặc **Actions → src-vip-android** build APK + AAB.
+Push `main` hoặc **Actions → inventory-scan-android** build APK + AAB.
 
 Secrets:
 

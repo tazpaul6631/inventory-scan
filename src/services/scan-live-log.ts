@@ -3,8 +3,8 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { formatDateTime } from '@/utils/format'
 import type { ScanLog } from '@/types'
 
-/** Append-only CSV under Documents/SRC VIP — survives UI limits and delete-all. */
-export const SCAN_LIVE_LOG_PATH = 'SRC VIP/scan-live-log.csv'
+/** Append-only CSV under Documents/Inventory Scan — survives UI limits and delete-all. */
+export const SCAN_LIVE_LOG_PATH = 'Inventory Scan/scan-live-log.csv'
 
 const HEADER = 'Barcode,Type,DateNow\n'
 

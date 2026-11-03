@@ -18,14 +18,14 @@ export interface ExportColumn {
 
 async function saveNative(filename: string, data: string, encoding: Encoding = Encoding.UTF8) {
   await Filesystem.writeFile({
-    path: `SRC VIP/${filename}`,
+    path: `Inventory Scan/${filename}`,
     data,
     directory: Directory.Documents,
     encoding,
     recursive: true,
   })
   const uri = await Filesystem.getUri({
-    path: `SRC VIP/${filename}`,
+    path: `Inventory Scan/${filename}`,
     directory: Directory.Documents,
   })
   try {
@@ -93,7 +93,7 @@ export async function exportXlsx(
       binary += String.fromCharCode(b)
     })
     await Filesystem.writeFile({
-      path: `SRC VIP/${filename}`,
+      path: `Inventory Scan/${filename}`,
       data: btoa(binary),
       directory: Directory.Documents,
       recursive: true,
@@ -120,7 +120,7 @@ export async function exportPdf(
   if (Capacitor.isNativePlatform()) {
     const data = doc.output('datauristring').split(',')[1]
     await Filesystem.writeFile({
-      path: `SRC VIP/${filename}`,
+      path: `Inventory Scan/${filename}`,
       data,
       directory: Directory.Documents,
       recursive: true,

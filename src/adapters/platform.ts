@@ -42,8 +42,15 @@ export function detectDeviceShell(): DeviceShell {
   return 'web'
 }
 
-export function homePathForShell(shell = detectDeviceShell()): string {
-  // PDA / mobile: land on mobile scan shell.
-  if (isNative() || shell === 'mobile') return '/app/mobile/scan'
-  return '/'
+export function isAppShell(): boolean {
+  return isNative() || detectDeviceShell() === 'mobile'
+}
+
+export function homePathForShell(): string {
+  return isAppShell() ? '/app/mobile/scan' : '/web/users'
+}
+
+export function pathMatchesShell(path: string): boolean {
+  if (isAppShell()) return path.startsWith('/app/mobile')
+  return path.startsWith('/web')
 }

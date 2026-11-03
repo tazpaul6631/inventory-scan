@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SRC VIP</string>
-    <string name="title_activity_main">SRC VIP</string>
+    <string name="app_name">Inventory Scan</string>
+    <string name="title_activity_main">Inventory Scan</string>
     <string name="package_name">com.srcvip.app</string>
     <string name="custom_url_scheme">com.srcvip.app</string>
 </resources>

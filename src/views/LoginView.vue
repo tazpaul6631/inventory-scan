@@ -2,28 +2,36 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useToast } from 'primevue/usetoast'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
-import InputText from '@/components/ui/AppInputText.vue'
-import Password from '@/components/ui/AppPassword.vue'
+import dayjs from 'dayjs'
+import Select from '@/components/ui/AppSelect.vue'
 import FloatLabel from '@/components/ui/AppFloatLabel.vue'
 import Button from '@/components/ui/AppButton.vue'
 import Message from '@/components/ui/AppMessage.vue'
+import InputText from '@/components/ui/AppInputText.vue'
+import Password from '@/components/ui/AppPassword.vue'
 import { createLoginSchema } from '@/schemas/login'
 import { useSettingsStore } from '@/stores/settings'
 import LocaleSelect from '@/components/layout/LocaleSelect.vue'
 import { detectDeviceShell, homePathForShell, type DeviceShell } from '@/adapters/platform'
 import { useAuthStore } from '@/stores/auth'
+import { scanOnce } from '@/adapters/barcode'
+import { getFactoryList, queryCycleResult } from '@/services/api/category'
 import { readApiFailure } from '@/services/api/error'
 
 const { t, locale } = useI18n()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const settings = useSettingsStore()
 const auth = useAuthStore()
 const submitting = ref(false)
+const scanning = ref(false)
 const credentialError = ref('')
 const shell = ref<DeviceShell>(detectDeviceShell())
+const isMobileLogin = computed(() => shell.value === 'mobile')
 
 function refreshShell() {
   shell.value = detectDeviceShell()
@@ -38,36 +46,161 @@ onUnmounted(() => {
   window.removeEventListener('resize', refreshShell)
 })
 
-const { defineField, handleSubmit, errors, validateField } = useForm({
+const { defineField, handleSubmit, errors } = useForm({
   validationSchema: computed(() => {
     void locale.value
-    return toTypedSchema(createLoginSchema())
+    return toTypedSchema(createLoginSchema(isMobileLogin.value ? 'mobile' : 'web'))
   }),
-  initialValues: { email: '', password: '' },
+  initialValues: { factory: '', cycle: '', staffId: '', password: '' },
   validateOnMount: false,
 })
 
-const [email, emailAttrs] = defineField('email', { validateOnModelUpdate: true })
+const [factory, factoryAttrs] = defineField('factory', { validateOnModelUpdate: true })
+const [cycle, cycleAttrs] = defineField('cycle', { validateOnModelUpdate: true })
+const [staffId, staffIdAttrs] = defineField('staffId', { validateOnModelUpdate: true })
 const [password, passwordAttrs] = defineField('password', { validateOnModelUpdate: true })
+const factoryOptions = ref<{ label: string; value: string; id: number | undefined; abbr: string }[]>([])
+const loadingFactories = ref(false)
+const cycleId = ref<number | undefined>()
 
 function clearCredentialError() {
   if (credentialError.value) credentialError.value = ''
+}
+
+function formatScanDate(value?: string | null) {
+  if (!value) return ''
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format('DD/MM/YYYY') : ''
+}
+
+async function loadFactories() {
+  if (loadingFactories.value) return
+  loadingFactories.value = true
+  try {
+    const res = await getFactoryList()
+    factoryOptions.value = (res.data ?? []).map((item) => {
+      const name = item.name?.trim() || ''
+      const abbr = item.abbr?.trim() || ''
+      return { label: name || abbr, value: abbr || name, id: item.id, abbr }
+    }).filter((item) => item.value)
+  } catch (err) {
+    factoryOptions.value = []
+    toast.add({
+      severity: 'warn',
+      summary: readApiFailure(err) || t('auth.invalid'),
+      life: 2500,
+      closable: false,
+    })
+  } finally {
+    loadingFactories.value = false
+  }
+}
+
+async function loadCycle() {
+  const factoryValue = typeof factory.value === 'string' ? factory.value.trim() : ''
+  if (!factoryValue) {
+    cycle.value = ''
+    cycleId.value = undefined
+    return
+  }
+  try {
+    const res = await queryCycleResult()
+    cycle.value = formatScanDate(res.data?.scanDate)
+    cycleId.value = res.data?.id
+  } catch (err) {
+    cycle.value = ''
+    cycleId.value = undefined
+    toast.add({
+      severity: 'warn',
+      summary: readApiFailure(err) || t('auth.invalid'),
+      life: 2500,
+      closable: false,
+    })
+  }
+}
+
+function onFactoryChange() {
+  clearCredentialError()
+  void loadCycle()
+}
+
+function onFactoryShow() {
+  void loadFactories()
+}
+
+function isScanCanceled(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err)
+  return /cancel/i.test(message)
+}
+
+function fieldValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function hasFactoryAndCycle() {
+  return Boolean(fieldValue(factory.value) && fieldValue(cycle.value))
+}
+
+const canSubmit = computed(() => {
+  const staff = fieldValue(staffId.value)
+  const pwd = fieldValue(password.value)
+  if (!staff || !pwd) return false
+  return isMobileLogin.value ? hasFactoryAndCycle() : true
+})
+
+async function scanStaffId() {
+  if (scanning.value || submitting.value) return
+  scanning.value = true
+  try {
+    const result = await scanOnce()
+    const code = result.value.trim()
+    if (!code) return
+    staffId.value = code
+    if (canSubmit.value) await submit()
+  } catch (err) {
+    if (isScanCanceled(err)) return
+    toast.add({
+      severity: 'warn',
+      summary: err instanceof Error ? err.message : String(err),
+      life: 2500,
+      closable: false,
+    })
+  } finally {
+    scanning.value = false
+  }
+}
+
+function redirectAfterLogin() {
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  return redirect.startsWith('/') && !redirect.startsWith('/login')
+    ? redirect
+    : homePathForShell()
 }
 
 const submit = handleSubmit(async (values) => {
   credentialError.value = ''
   submitting.value = true
   try {
-    // const res = await auth.login(values.email, values.password)
-    // if (res.success && auth.isLoggedIn) {
-    //   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-    //   const target = redirect.startsWith('/') && !redirect.startsWith('/login')
-    //     ? redirect
-    //     : homePathForShell()
-    //   await router.replace(target)
-    //   return
-    // }
-    // credentialError.value = res.message || t('auth.invalid')
+    const res = await auth.login(String(values.staffId ?? ''), String(values.password ?? ''), {
+      requireAllowWeb: !isMobileLogin.value,
+    })
+    if (res.success && auth.isLoggedIn) {
+      if (isMobileLogin.value) {
+        const factoryValue = String(values.factory ?? '')
+        const selectedFactory = factoryOptions.value.find((item) => item.value === factoryValue)
+        await auth.setLoginSelection(
+          factoryValue,
+          String(values.cycle ?? ''),
+          selectedFactory?.label,
+          selectedFactory?.id,
+          selectedFactory?.abbr,
+          cycleId.value,
+        )
+      }
+      await router.replace(redirectAfterLogin())
+      return
+    }
+    credentialError.value = res.message || t('auth.invalid')
   } catch (err) {
     credentialError.value = readApiFailure(err) || t('auth.invalid')
   } finally {
@@ -104,27 +237,49 @@ const submit = handleSubmit(async (values) => {
         </div>
       </div>
 
+      <template v-if="isMobileLogin">
+        <div>
+          <FloatLabel variant="on">
+            <Select input-id="factory" v-model="factory" v-bind="factoryAttrs" :options="factoryOptions"
+              option-label="label" option-value="value" :invalid="Boolean(errors.factory)" class="w-full"
+              :loading="loadingFactories" @before-show="onFactoryShow" @update:model-value="onFactoryChange" />
+            <label for="factory">{{ t('auth.factory') }}</label>
+          </FloatLabel>
+          <small class="p-error">{{ errors.factory }}</small>
+        </div>
+        <div>
+          <FloatLabel variant="on">
+            <InputText id="cycle" v-model="cycle" v-bind="cycleAttrs" readonly :invalid="Boolean(errors.cycle)"
+              class="w-full" />
+            <label for="cycle">{{ t('auth.cycle') }}</label>
+          </FloatLabel>
+          <small class="p-error">{{ errors.cycle }}</small>
+        </div>
+      </template>
       <div>
-        <FloatLabel variant="on">
-          <InputText id="email" v-model="email" v-bind="emailAttrs" :invalid="Boolean(errors.email)"
-            autocomplete="email" class="w-full" @update:model-value="clearCredentialError" />
-          <label for="email">{{ t('auth.email') }}</label>
-        </FloatLabel>
-        <small class="p-error">{{ errors.email }}</small>
+        <div class="flex items-center gap-2">
+          <FloatLabel variant="on" class="min-w-0 flex-1">
+            <InputText id="staff-id" v-model="staffId" v-bind="staffIdAttrs" :invalid="Boolean(errors.staffId)"
+              class="w-full" @update:model-value="clearCredentialError" />
+            <label for="staff-id">{{ t('scan.staffId') }}</label>
+          </FloatLabel>
+          <Button type="button" icon="pi pi-qrcode" class="shrink-0" :aria-label="t('scan.checkQR')" :loading="scanning"
+            :disabled="scanning || submitting" @click="scanStaffId" />
+        </div>
+        <small class="p-error">{{ errors.staffId }}</small>
       </div>
       <div>
         <FloatLabel variant="on">
           <Password input-id="password" v-model="password" v-bind="passwordAttrs" :invalid="Boolean(errors.password)"
-            :feedback="false" toggle-mask autocomplete="current-password" class="block w-full"
-            :input-style="{ width: '100%' }" @blur="void validateField('password')"
-            @update:model-value="clearCredentialError" />
+            class="w-full" @update:model-value="clearCredentialError" />
           <label for="password">{{ t('auth.password') }}</label>
         </FloatLabel>
         <small class="p-error">{{ errors.password }}</small>
       </div>
 
       <Message v-if="credentialError" severity="error">{{ credentialError }}</Message>
-      <Button type="submit" :label="t('auth.login')" icon="pi pi-sign-in" :loading="submitting" />
+      <Button type="submit" :label="t('auth.login')" icon="pi pi-sign-in" :loading="submitting"
+        :disabled="!canSubmit || submitting" />
       <p class="m-0 text-center text-xs text-muted">{{ t('footer.copyright') }}</p>
     </form>
   </div>
