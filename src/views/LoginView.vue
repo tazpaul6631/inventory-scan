@@ -263,8 +263,9 @@ const submit = handleSubmit(async (values) => {
               class="w-full" @update:model-value="clearCredentialError" />
             <label for="staff-id">{{ t('scan.staffId') }}</label>
           </FloatLabel>
-          <Button type="button" icon="pi pi-qrcode" class="shrink-0" :aria-label="t('scan.checkQR')" :loading="scanning"
-            :disabled="scanning || submitting" @click="scanStaffId" />
+          <Button v-if="isMobileLogin" type="button" icon="pi pi-qrcode" class="shrink-0"
+            :aria-label="t('scan.checkQR')" :loading="scanning" :disabled="scanning || submitting"
+            @click="scanStaffId" />
         </div>
         <small class="p-error">{{ errors.staffId }}</small>
       </div>

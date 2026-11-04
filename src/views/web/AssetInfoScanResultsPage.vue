@@ -80,17 +80,17 @@ onMounted(() => {
         <Column field="wPosition" :header="t('assetScanResult.wPosition')" />
         <Column field="vatNo" :header="t('assetScanResult.vatNo')" />
         <Column field="orderCode" :header="t('assetScanResult.orderCode')" />
-        <Column field="styleCode" :header="t('assetScanResult.styleCode')" />
+        <!-- <Column field="styleCode" :header="t('assetScanResult.styleCode')" /> -->
         <Column field="materialCode" :header="t('assetScanResult.materialCode')" />
         <Column field="materialName" :header="t('assetScanResult.materialName')" />
         <Column field="materialClass" :header="t('assetScanResult.materialClass')" />
         <Column field="materialSubClass" :header="t('assetScanResult.materialSubClass')" />
         <Column field="assetState" :header="t('assetScanResult.assetState')" />
-        <Column field="quality" :header="t('assetScanResult.quality')" />
+        <!-- <Column field="quality" :header="t('assetScanResult.quality')" />
         <Column field="rollNo" :header="t('assetScanResult.rollNo')" />
-        <Column field="batchNo" :header="t('assetScanResult.batchNo')" />
+        <Column field="batchNo" :header="t('assetScanResult.batchNo')" /> -->
         <Column field="count" :header="t('assetScanResult.count')" />
-        <Column field="cycleId" :header="t('assetScanResult.cycleId')" />
+        <!-- <Column field="cycleId" :header="t('assetScanResult.cycleId')" /> -->
         <Column field="scanResult" :header="t('assetScanResult.scanResult')" />
       </DataTable>
     </div>

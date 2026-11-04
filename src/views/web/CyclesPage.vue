@@ -89,7 +89,7 @@ onMounted(() => {
           </div>
         </template>
         <Column field="code" :header="t('cycle.code')" />
-        <Column field="status" :header="t('cycle.status')" />
+        <!-- <Column field="status" :header="t('cycle.status')" /> -->
         <Column :header="t('cycle.scanDate')">
           <template #body="{ data }">
             {{ formatDate(data.scanDate) }}
@@ -101,13 +101,13 @@ onMounted(() => {
             {{ formatDate(data.createdAt) }}
           </template>
         </Column>
-        <Column field="createdBy" :header="t('cycle.createdBy')" />
+        <!-- <Column field="createdBy" :header="t('cycle.createdBy')" /> -->
         <Column :header="t('cycle.updatedAt')">
           <template #body="{ data }">
             {{ formatDate(data.updatedAt) }}
           </template>
         </Column>
-        <Column field="updatedBy" :header="t('cycle.updatedBy')" />
+        <!-- <Column field="updatedBy" :header="t('cycle.updatedBy')" /> -->
       </DataTable>
     </div>
   </div>

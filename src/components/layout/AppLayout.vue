@@ -175,10 +175,10 @@ const title = computed(() =>
               </RouterLink>
             </div>
           </nav>
-          <div v-if="!open && !webIconRail" class="sidebar-brand-foot">
+          <!-- <div v-if="!open && !webIconRail" class="sidebar-brand-foot">
             <img class="sidebar-brand-foot-logo" src="/logo-company.png" :alt="t('app.name')" />
             <p class="sidebar-brand-foot-copy">{{ t('footer.copyright') }}</p>
-          </div>
+          </div> -->
         </aside>
         <div class="main">
           <header class="topbar">

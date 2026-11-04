@@ -177,6 +177,8 @@ const zhTW: MessageSchema = {
     emptyTitle: '尚無工廠',
     emptyHint: '伺服器回傳的工廠清單會顯示在這裡。',
     sync: '同步伺服器',
+    syncSuccess: '工廠已同步',
+    syncError: '無法同步工廠',
   },
   warehouse: {
     sno: '序號',

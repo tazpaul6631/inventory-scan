@@ -28,6 +28,11 @@ export async function queryFactoryResult(params?: FactoryQueryResultRequest) {
   return data
 }
 
+export async function syncFactoriesFromApi(params: { createdBy: string }) {
+  const { data } = await http.post<ApiResponse<boolean>>('/category/fc/syncfromapi', params)
+  return data
+}
+
 export async function queryCycleResult() {
   const { data } = await http.get<ApiResponse<ViewCycle>>('/category/cc/getlastest')
   return data

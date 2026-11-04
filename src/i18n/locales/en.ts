@@ -175,6 +175,8 @@ const en = {
     emptyTitle: 'No factories yet',
     emptyHint: 'Factories from the server will show up here.',
     sync: 'Sync from server',
+    syncSuccess: 'Factories synced',
+    syncError: 'Could not sync factories',
   },
   warehouse: {
     sno: 'SNo',

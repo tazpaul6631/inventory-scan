@@ -177,6 +177,8 @@ const vi: MessageSchema = {
     emptyTitle: 'Chưa có factory',
     emptyHint: 'Danh sách factory từ server sẽ hiện ở đây.',
     sync: 'Đồng bộ từ server',
+    syncSuccess: 'Đã đồng bộ factory',
+    syncError: 'Không đồng bộ được factory',
   },
   warehouse: {
     sno: 'SNo',
