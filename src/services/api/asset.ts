@@ -1,6 +1,7 @@
 import { http } from '@/services/http'
 import type {
   ApiResponse,
+  AssetInfoScanResultQueryResult,
   AssetQueryResult,
   AssetQueryResultRequest,
   CreateAiScanResultRequest,
@@ -8,6 +9,22 @@ import type {
 
 export async function queryAssetInfoViewResult(params: AssetQueryResultRequest) {
   const { data } = await http.post<ApiResponse<AssetQueryResult>>('/asset/aivc/queryresult', params)
+  return data
+}
+
+export async function queryAssetInfoResult(params?: AssetQueryResultRequest) {
+  const { data } = await http.post<ApiResponse<AssetQueryResult>>(
+    '/asset/aic/queryresult',
+    params ?? {},
+  )
+  return data
+}
+
+export async function queryAssetInfoScanResult(params?: AssetQueryResultRequest) {
+  const { data } = await http.post<ApiResponse<AssetInfoScanResultQueryResult>>(
+    '/asset/aisrc/queryresult',
+    params ?? {},
+  )
   return data
 }
 

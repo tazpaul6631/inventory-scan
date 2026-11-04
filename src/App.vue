@@ -62,15 +62,19 @@ onMounted(async () => {
     await settings.load()
     applyLocale(normalizeLocale(settings.current.locale))
     await auth.load()
+    const intendedPath = window.location.pathname
+    const intendedFull = `${window.location.pathname}${window.location.search}`
     if (!auth.isLoggedIn) {
       if (route.name !== 'login') {
         await router.replace({
           name: 'login',
-          query: route.path === '/login' ? {} : { redirect: route.fullPath },
+          query: intendedPath === '/login' ? {} : { redirect: intendedFull },
         })
       }
-    } else if (!pathMatchesShell(route.path)) {
+    } else if (!pathMatchesShell(intendedPath) || intendedPath === '/' || intendedPath === '/login') {
       await router.replace(homePathForShell())
+    } else {
+      await router.replace(intendedFull)
     }
     if (isNative()) {
       watchAppPause(() => {

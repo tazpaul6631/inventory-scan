@@ -862,14 +862,20 @@ body {
 }
 
 .scan-tabs.p-tabs {
+  position: relative;
+  z-index: 20;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 }
 
-.scan-tabs .p-tablist {
+.scan-tabs .p-tablist,
+.scan-tabs .p-tablist-content,
+.scan-tabs .p-tablist-tab-list {
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .scan-tabs .p-tab {
@@ -879,6 +885,34 @@ body {
 
 .scan-tabs .p-tab[data-p-active='true'] {
   color: #fff;
+}
+
+.scan-tabs .scan-tab-badge {
+  position: relative;
+  z-index: 30;
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.scan-tabs .scan-tab-badge .p-tab {
+  width: 100%;
+}
+
+.scan-tabs .scan-tab-badge .p-badge {
+  z-index: 40;
+  min-width: 1.25rem;
+  max-width: 2.75rem;
+  /* height: 1.15rem; */
+  padding: 0 0.35rem;
+  /* font-size: 0.65rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; */
+}
+
+.scan-tabs .scan-tab-badge--empty .p-badge {
+  display: none;
 }
 
 .scan-tabs .p-tabpanels,
@@ -1087,7 +1121,14 @@ body {
 }
 
 @media (max-width: 767px) {
-  .users-page .p-datatable-paginator-bottom .p-paginator {
+
+  .users-page .p-datatable-paginator-bottom .p-paginator,
+  .factories-page .p-datatable-paginator-bottom .p-paginator,
+  .warehouses-page .p-datatable-paginator-bottom .p-paginator,
+  .positions-page .p-datatable-paginator-bottom .p-paginator,
+  .asset-info-page .p-datatable-paginator-bottom .p-paginator,
+  .asset-scan-results-page .p-datatable-paginator-bottom .p-paginator,
+  .cycles-page .p-datatable-paginator-bottom .p-paginator {
     flex-wrap: wrap;
     justify-content: center;
     row-gap: 6px;

@@ -13,11 +13,26 @@ export type {
   ViewUser,
 } from './user'
 export type { ViewRole } from './role'
-export type { ViewFactory, ViewCycle, CycleQueryResult, ViewWarehouse, ViewArea } from './category'
+export type {
+  ViewFactory,
+  FactoryQueryResultRequest,
+  FactoryQueryResult,
+  ViewCycle,
+  CycleQueryResultRequest,
+  CycleQueryResult,
+  ViewWarehouse,
+  WarehouseQueryResultRequest,
+  WarehouseQueryResult,
+  ViewArea,
+  PositionQueryResultRequest,
+  PositionQueryResult,
+} from './category'
 export type {
   AssetQueryResultRequest,
   ViewAssetInfo,
   AssetQueryResult,
+  ViewAssetInfoScanResult,
+  AssetInfoScanResultQueryResult,
   AiScanResultCode,
   CreateAiScanResultRequest,
 } from './asset'

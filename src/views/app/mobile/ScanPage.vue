@@ -15,12 +15,14 @@ import InputText from '@/components/ui/AppInputText.vue'
 import Select from '@/components/ui/AppSelect.vue'
 import FloatLabel from '@/components/ui/AppFloatLabel.vue'
 import Dialog from '@/components/ui/AppDialog.vue'
+import OverlayBadge from 'primevue/overlaybadge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useScan } from '@/composables/useScan'
 import { useBarcodeWedge } from '@/composables/useBarcodeWedge'
 import { scanOnce } from '@/adapters/barcode'
 import { useAuthStore } from '@/stores/auth'
+import { useNetworkStore } from '@/stores/network'
 import { getAreaList, getWarehouseList } from '@/services/api/category'
 import { createAiScanResult, queryAssetInfoViewResult } from '@/services/api/asset'
 import { readApiFailure } from '@/services/api/error'
@@ -43,6 +45,7 @@ interface ScanTableRow {
 const { t } = useI18n()
 const toast = useToast()
 const { session } = storeToRefs(useAuthStore())
+const { online } = storeToRefs(useNetworkStore())
 
 const direction = ref<ScanDirection>('in')
 const { remember } = useScan(direction)
@@ -66,6 +69,7 @@ const resultCount = ref<number | null>(1)
 const resultExpect = ref(1)
 const toCheckItems = ref<ScanTableRow[]>([])
 const currentRows = ref<ScanTableRow[]>([])
+const currentScanCount = ref(0)
 
 const factoryId = computed(() => session.value?.factoryId)
 
@@ -103,6 +107,7 @@ function onWarehouseChange() {
   position.value = null
   positionOptions.value = []
   toCheckItems.value = []
+  currentScanCount.value = 0
 }
 
 async function loadToCheckAssets() {
@@ -111,6 +116,7 @@ async function loadToCheckAssets() {
   const wPositionId = position.value ? Number(position.value) : NaN
   if (fid === undefined || Number.isNaN(warehouseId) || Number.isNaN(wPositionId)) {
     toCheckItems.value = []
+    currentScanCount.value = 0
     return
   }
   if (loadingAssets.value) return
@@ -123,6 +129,7 @@ async function loadToCheckAssets() {
       warehouseId,
       wPositionId,
     })
+    currentScanCount.value = 0
     toCheckItems.value = (res.data?.items ?? []).map((item) => ({
       sticker: item.vatNo?.trim() || '',
       qty: formatQty(0, item.count || 1),
@@ -142,6 +149,7 @@ async function loadToCheckAssets() {
     }
   } catch (err) {
     toCheckItems.value = []
+    currentScanCount.value = 0
     toast.add({
       severity: 'warn',
       summary: readApiFailure(err) || t('auth.invalid'),
@@ -207,11 +215,19 @@ const cycleLabel = computed(() => {
   return parsed.isValid() ? parsed.format('DD/MM/YYYY') : cycle
 })
 
-const toCheckRemaining = computed(
-  () => toCheckItems.value.filter((row) => row.status === 'pending').length,
+const toCheckScanned = computed(
+  () =>
+    toCheckItems.value.filter((row) => row.status === 'success' || row.status === 'duplicate')
+      .length,
 )
 const toCheckTotal = computed(() => toCheckItems.value.length)
 const canScan = computed(() => Boolean(position.value) && toCheckItems.value.length > 0)
+
+function formatScanBadge(count: number) {
+  if (count < 1000) return String(count)
+  if (count < 10_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return `${Math.round(count / 1000)}k`
+}
 
 const resultTitle = computed(() => {
   if (resultStatus.value === 'duplicate') return t('scan.resultDuplicate')
@@ -289,6 +305,8 @@ async function persistScan(value: string, kind: ScanResult['kind'], format: stri
 }
 
 async function submitScanCommand(row: ScanTableRow, scanResult: AiScanResultCode, count: number) {
+  if (!online.value) return
+
   const asset = row.asset
   const createdBy = session.value?.userId?.trim() ?? ''
   const cycleId = session.value?.cycleId
@@ -355,6 +373,7 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
   const code = value.trim()
   if (!code) return
   manual.value = ''
+  currentScanCount.value += 1
 
   const matches = findToCheckMatches(code)
   if (!matches.length) {
@@ -374,16 +393,6 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
   const primary = matches[0]
   const alreadyScanned = matches.some((row) => row.status !== 'pending')
   if (alreadyScanned) {
-    const scanResult = resolveScanResult(matches)
-    const count = Math.max(1, parseQty(primary.qty).count)
-    await submitScanCommand(
-      {
-        ...primary,
-        originalWposition: primary.asset?.wPosition?.trim() || primary.originalWposition,
-      },
-      scanResult,
-      count,
-    )
     openResult('duplicate', primary)
     return
   }
@@ -513,7 +522,7 @@ async function checkQR() {
         </FloatLabel>
       </div>
 
-      <div class="flex shrink-0 items-center gap-2">
+      <div class="relative z-0 flex shrink-0 items-center gap-2">
         <FloatLabel class="min-w-0 flex-1">
           <InputText id="manual-input" name="manual-input" v-model="manual" class="w-full" :disabled="!canScan"
             @keydown.enter="saveManual" />
@@ -522,14 +531,17 @@ async function checkQR() {
         <Button class="shrink-0" :label="t('common.save')" :disabled="!canScan || !manual.trim()" @click="saveManual" />
       </div>
 
-      <Tabs v-model:value="activeTab" scrollable class="scan-tabs mt-3 min-h-0 flex-1 overflow-hidden">
+      <Tabs v-model:value="activeTab" scrollable class="scan-tabs mt-3 min-h-0 flex-1">
         <TabList :pt="{
           activeBar: {
             class: '!top-1 !z-0 !h-[calc(100%-8px)] !rounded-md transition-[left,width]',
           },
         }">
-          <Tab value="current">{{ t('scan.tabCurrent') }}</Tab>
-          <Tab value="tocheck">{{ t('scan.tabToCheck', { scanned: toCheckRemaining, total: toCheckTotal }) }}</Tab>
+          <OverlayBadge :class="['scan-tab-badge', { 'scan-tab-badge--empty': currentScanCount <= 0 }]"
+            :value="currentScanCount > 0 ? formatScanBadge(currentScanCount) : ''" severity="success">
+            <Tab value="current">{{ t('scan.tabCurrent') }}</Tab>
+          </OverlayBadge>
+          <Tab value="tocheck">{{ t('scan.tabToCheck', { scanned: toCheckScanned, total: toCheckTotal }) }}</Tab>
         </TabList>
         <TabPanels>
           <TabPanel value="current">

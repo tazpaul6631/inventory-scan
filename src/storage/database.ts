@@ -34,7 +34,7 @@ function schedulePersist(): void {
   if (isNative() || !webDb) return
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
-    void persistWebDb()
+    void persistWebDb().catch(() => undefined)
   }, 250)
 }
 
@@ -177,12 +177,21 @@ export async function exportSqliteBytes(): Promise<Uint8Array> {
     return new TextEncoder().encode(text)
   }
   if (!webDb) throw new Error(trError('sqliteWeb'))
-  await persistWebDb()
+  try {
+    await persistWebDb()
+  } catch {
+    // still return in-memory export
+  }
   return webDb.export()
 }
 
 export async function flushDatabase(): Promise<void> {
-  if (!isNative()) await persistWebDb()
+  if (isNative()) return
+  try {
+    await persistWebDb()
+  } catch {
+    // OPFS/IDB may be unavailable; in-memory + localStorage session still work
+  }
 }
 
 export function isDatabaseReady(): boolean {

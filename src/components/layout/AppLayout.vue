@@ -129,7 +129,15 @@ const navGroups = computed(() => {
     {
       key: 'web',
       label: t('nav.web'),
-      items: [{ to: '/web/users', icon: 'pi pi-users', label: t('nav.users') }],
+      items: [
+        { to: '/web/users', icon: 'pi pi-users', label: t('nav.users') },
+        { to: '/web/cycles', icon: 'pi pi-calendar', label: t('nav.cycles') },
+        { to: '/web/factories', icon: 'pi pi-building', label: t('nav.factories') },
+        { to: '/web/warehouses', icon: 'pi pi-box', label: t('nav.warehouses') },
+        { to: '/web/positions', icon: 'pi pi-map-marker', label: t('nav.positions') },
+        { to: '/web/asset-info', icon: 'pi pi-database', label: t('nav.assetInfo') },
+        { to: '/web/asset-scan-results', icon: 'pi pi-check-square', label: t('nav.assetScanResults') },
+      ],
     },
   ]
 })

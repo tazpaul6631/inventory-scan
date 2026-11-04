@@ -7,7 +7,7 @@ export interface AssetQueryResultRequest {
 }
 
 export interface ViewAssetInfo {
-  id: string
+  id?: string
   factoryId?: number
   tenantId?: string | null
   warehouseId?: number
@@ -38,6 +38,21 @@ export interface ViewAssetInfo {
 
 export interface AssetQueryResult {
   items?: ViewAssetInfo[] | null
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPage?: number
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
+}
+
+export interface ViewAssetInfoScanResult extends ViewAssetInfo {
+  cycleId?: number
+  scanResult?: string | null
+}
+
+export interface AssetInfoScanResultQueryResult {
+  items?: ViewAssetInfoScanResult[] | null
   totalCount: number
   page: number
   pageSize: number

@@ -6,6 +6,27 @@ export interface ViewFactory {
   abbr?: string | null
 }
 
+export interface FactoryQueryResultRequest {
+  page?: number
+  pageSize?: number
+  id?: number | null
+  ids?: number[] | null
+  sno?: number | null
+  snos?: number[] | null
+  tenantId?: string | null
+  abbr?: string | null
+}
+
+export interface FactoryQueryResult {
+  items?: ViewFactory[] | null
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPage?: number
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
+}
+
 export interface ViewCycle {
   id: number
   status?: number
@@ -18,12 +39,42 @@ export interface ViewCycle {
   updatedBy?: string | null
 }
 
+export interface CycleQueryResultRequest {
+  page?: number
+  pageSize?: number
+  id?: number | null
+  ids?: number[] | null
+  status?: number | null
+  code?: string | null
+}
+
 export interface ViewWarehouse {
   id: number
   sno?: number
   factoryId?: number
   name?: string | null
   remark?: string | null
+}
+
+export interface WarehouseQueryResultRequest {
+  page?: number
+  pageSize?: number
+  id?: number | null
+  ids?: number[] | null
+  sno?: number | null
+  snos?: number[] | null
+  factoryId?: number | null
+  factoryIds?: number[] | null
+}
+
+export interface WarehouseQueryResult {
+  items?: ViewWarehouse[] | null
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPage?: number
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
 }
 
 export interface ViewArea {
@@ -34,6 +85,29 @@ export interface ViewArea {
   wposition?: string | null
   remark?: string | null
   lastSyncAt?: string | null
+}
+
+export interface PositionQueryResultRequest {
+  page?: number
+  pageSize?: number
+  id?: number | null
+  ids?: number[] | null
+  sno?: number | null
+  snos?: number[] | null
+  factoryId?: number | null
+  factoryIds?: number[] | null
+  warehouseId?: number | null
+  warehouseIds?: number[] | null
+}
+
+export interface PositionQueryResult {
+  items?: ViewArea[] | null
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPage?: number
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
 }
 
 export interface CycleQueryResult {
