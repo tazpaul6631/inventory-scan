@@ -73,10 +73,10 @@ async function confirmDelete() {
     <p class="m-0">{{ t('user.deleteMessage', { name: displayName }) }}</p>
     <Message v-if="formError" class="mt-3" severity="error">{{ formError }}</Message>
     <div class="mt-4 flex justify-end gap-2">
-      <Button type="button" :label="t('common.cancel')" :raised="false" text severity="secondary" :disabled="deleting"
-        @click="close" />
-      <Button :label="t('common.delete')" icon="pi pi-trash" severity="danger" :loading="deleting" :disabled="deleting"
-        @click="confirmDelete" />
+      <Button type="button" :label="t('common.cancel')" size="large" :raised="false" text severity="secondary"
+        :disabled="deleting" @click="close" />
+      <Button :label="t('common.delete')" icon="pi pi-trash" severity="danger" size="large" :loading="deleting"
+        :disabled="deleting" @click="confirmDelete" />
     </div>
   </Dialog>
 </template>

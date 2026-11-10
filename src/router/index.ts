@@ -40,6 +40,11 @@ const router = createRouter({
           component: () => import('@/views/web/PositionsPage.vue'),
         },
         {
+          path: 'web/organizations',
+          name: 'web-organizations',
+          component: () => import('@/views/web/OrganizationsPage.vue'),
+        },
+        {
           path: 'web/asset-info',
           name: 'web-asset-info',
           component: () => import('@/views/web/AssetInfoPage.vue'),

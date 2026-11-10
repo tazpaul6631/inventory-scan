@@ -1,6 +1,9 @@
+export type LoginPlatform = 'Mobile' | 'Website'
+
 export interface UserValidateRequest {
   code: string
-  password: string
+  password?: string
+  platform: LoginPlatform
   loginAt: string
 }
 

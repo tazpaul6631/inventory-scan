@@ -273,7 +273,7 @@ function deleteAll() {
 </script>
 
 <template>
-  <div class="page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
+  <div class="page-fill gap-3 overflow-hidden">
     <div class="flex shrink-0 flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap gap-2">
         <!-- <Button icon="pi pi-refresh" :aria-label="t('common.search')" :disabled="exporting" @click="reload" /> -->
@@ -282,8 +282,8 @@ function deleteAll() {
         <Button icon="pi pi-info-circle" severity="help" outlined @click="usbGuideOpen = true" />
       </div>
       <div class="flex flex-wrap gap-2 justify-end">
-        <Button icon="pi pi-trash" severity="danger" outlined :loading="exporting"
-          :aria-label="t('common.deleteAll')" :disabled="!logs.length || exporting" @click="deleteAll" />
+        <Button icon="pi pi-trash" severity="danger" outlined :loading="exporting" :aria-label="t('common.deleteAll')"
+          :disabled="!logs.length || exporting" @click="deleteAll" />
         <Button icon="pi pi-filter-slash" outlined :disabled="!hasFilter" :aria-label="t('common.clearFilter')"
           @click="clearFilter" />
       </div>
@@ -295,8 +295,8 @@ function deleteAll() {
         <label for="history-filter-code">{{ t('scan.filterCode') }}</label>
       </FloatLabel>
       <FloatLabel class="min-w-28 w-36">
-        <Select input-id="history-filter-type" name="history-filter-type" v-model="filterType"
-          :options="typeOptions" option-label="label" option-value="value" class="w-full" />
+        <Select input-id="history-filter-type" name="history-filter-type" v-model="filterType" :options="typeOptions"
+          option-label="label" option-value="value" class="w-full" />
         <label for="history-filter-type">{{ t('scan.filterType') }}</label>
       </FloatLabel>
       <span class="shrink-0 text-sm font-semibold text-ink">{{ countLabel }}</span>
@@ -326,8 +326,7 @@ function deleteAll() {
               <td class="px-1.5 py-2 align-middle">{{ rowIndex(index) }}</td>
               <td class="px-1.5 py-2 align-middle break-all font-medium text-ink">{{ row.value }}</td>
               <td class="px-1.5 py-2 align-middle">
-                <Tag :value="directionLabel(row.direction)"
-                  :severity="row.direction === 'out' ? 'warn' : 'success'" />
+                <Tag :value="directionLabel(row.direction)" :severity="row.direction === 'out' ? 'warn' : 'success'" />
               </td>
               <td class="px-1.5 py-2 align-middle whitespace-nowrap text-muted">
                 <div class="flex flex-col leading-tight">
@@ -348,8 +347,8 @@ function deleteAll() {
         <Button icon="pi pi-chevron-left" text rounded :disabled="page <= 0" :aria-label="t('common.back')"
           @click="prevPage" />
         <span>{{ rangeLabel }}</span>
-        <Button icon="pi pi-chevron-right" text rounded :disabled="page >= pageCount - 1"
-          aria-label="Next" @click="nextPage" />
+        <Button icon="pi pi-chevron-right" text rounded :disabled="page >= pageCount - 1" aria-label="Next"
+          @click="nextPage" />
       </div>
     </div>
 

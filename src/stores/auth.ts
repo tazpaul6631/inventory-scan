@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import type { Session } from '@/types'
 import type { ApiResponse, ViewValidateUser } from '@/types/api'
 import { i18n } from '@/i18n'
-import { userLogout, userValidate } from '@/services/api/user'
+import { userValidate } from '@/services/api/user'
 import {
   clearSession,
   loadSession,
@@ -58,20 +58,25 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(
     code: string,
-    password: string,
-    options?: { requireAllowWeb?: boolean },
+    options: {
+      password?: string
+      platform: 'Mobile' | 'Website'
+      requireAllowWeb?: boolean
+    },
   ): Promise<ApiResponse<ViewValidateUser>> {
     const t = i18n.global.t
+    const password = options.password?.trim()
     const res = await userValidate({
       code: code.trim(),
-      password,
+      platform: options.platform,
       loginAt: vietnamLoginAt(),
+      ...(password ? { password } : {}),
     })
     if (!res.success || !res.data) return res
     if (res.data.isActive === false) {
       return { ...res, success: false, message: t('auth.inactive') }
     }
-    if (options?.requireAllowWeb && res.data.allowWeb === false) {
+    if (options.requireAllowWeb && res.data.allowWeb === false) {
       return { ...res, success: false, message: t('auth.webNotAllowed') }
     }
     const next = sessionFromUser(res.data)
@@ -133,12 +138,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    const userId = session.value?.userId
-    try {
-      if (userId) await userLogout(userId)
-    } catch {
-      // still clear the local session
-    }
     await expireSession()
   }
 

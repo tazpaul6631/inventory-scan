@@ -76,7 +76,8 @@ watch(visible, async (open) => {
 </script>
 
 <template>
-  <Dialog v-model:visible="visible" dismissable-mask :header="t('user.viewTitle')" :style="{ width: 'min(420px, 96vw)' }">
+  <Dialog v-model:visible="visible" dismissable-mask :header="t('user.viewTitle')"
+    :style="{ width: 'min(420px, 96vw)' }">
     <div v-if="loading" class="flex justify-center py-6">
       <i class="pi pi-spinner pi-spin text-xl" />
     </div>
@@ -99,7 +100,7 @@ watch(visible, async (open) => {
       </div>
     </div>
     <div class="mt-4 flex justify-end">
-      <Button :label="t('common.ok')" :disabled="loading" @click="close" />
+      <Button :label="t('common.ok')" size="large" :disabled="loading" @click="close" />
     </div>
   </Dialog>
 </template>

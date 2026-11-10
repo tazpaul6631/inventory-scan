@@ -1,25 +1,20 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from '@/components/ui/AppButton.vue'
-import { useAuthStore } from '@/stores/auth'
-import { queryFactoryResult, syncFactoriesFromApi } from '@/services/api/category'
+import { queryFactoryResult } from '@/services/api/category'
 import { readApiFailure } from '@/services/api/error'
 import type { ViewFactory } from '@/types/api'
 
 const { t } = useI18n()
 const toast = useToast()
-const { session } = storeToRefs(useAuthStore())
 const loading = ref(false)
-const syncing = ref(false)
 const rows = ref<ViewFactory[]>([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = ref(20)
+const pageSize = ref(50)
 
 async function load() {
   loading.value = true
@@ -52,49 +47,6 @@ async function load() {
   }
 }
 
-async function syncFromApi() {
-  const createdBy = session.value?.userId?.trim() ?? ''
-  if (!createdBy) {
-    toast.add({
-      severity: 'warn',
-      summary: t('user.needSession'),
-      life: 2500,
-      closable: false,
-    })
-    return
-  }
-  if (syncing.value) return
-  syncing.value = true
-  try {
-    const res = await syncFactoriesFromApi({ createdBy })
-    if (res.success === false) {
-      toast.add({
-        severity: 'warn',
-        summary: res.message || t('factory.syncError'),
-        life: 2500,
-        closable: false,
-      })
-      return
-    }
-    toast.add({
-      severity: 'success',
-      summary: res.message || t('factory.syncSuccess'),
-      life: 2500,
-      closable: false,
-    })
-    await load()
-  } catch (err) {
-    toast.add({
-      severity: 'warn',
-      summary: readApiFailure(err) || t('factory.syncError'),
-      life: 2500,
-      closable: false,
-    })
-  } finally {
-    syncing.value = false
-  }
-}
-
 function onPage(event: { page: number; rows: number }) {
   page.value = event.page
   pageSize.value = event.rows
@@ -108,12 +60,12 @@ onMounted(() => {
 
 <template>
   <div class="factories-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <Button icon="pi pi-sync" :label="t('factory.sync')" :loading="syncing" @click="syncFromApi" />
-    </div>
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
       <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id" @page="onPage">
+        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+        :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
         <template #empty>
           <div class="table-empty flex flex-col items-center justify-center gap-2 px-4 py-10 text-center text-muted">
             <i class="pi pi-inbox text-[1.75rem]" />

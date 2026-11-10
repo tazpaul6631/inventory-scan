@@ -48,6 +48,25 @@ export interface CycleQueryResultRequest {
   code?: string | null
 }
 
+export interface CreateCycleRequest {
+  scanDate: string
+  description?: string | null
+  createdBy: string
+  updatedBy: string
+}
+
+export interface UpdateCycleRequest {
+  scanDate: string
+  description?: string | null
+  updatedBy: string
+}
+
+export interface DeleteCycleRequest {
+  scanDate: string
+  description?: string | null
+  updatedBy: string
+}
+
 export interface ViewWarehouse {
   id: number
   sno?: number
@@ -112,6 +131,43 @@ export interface PositionQueryResult {
 
 export interface CycleQueryResult {
   items?: ViewCycle[] | null
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPage?: number
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
+}
+
+export interface ViewOrganization {
+  id: number | string
+  status?: number
+  code?: string | null
+  name?: string | null
+  factoryId?: number
+  createdAt?: string | null
+}
+
+export interface OrganizationQueryResultRequest {
+  page?: number
+  pageSize?: number
+  id?: number | string | null
+  ids?: Array<number | string> | null
+  status?: number | null
+  name?: string | null
+  code?: string | null
+  factoryId?: number | null
+}
+
+export interface BasePagedQueryRequest {
+  page?: number
+  pageSize?: number
+  factoryId?: number | null
+  cycleId?: number | null
+}
+
+export interface OrganizationQueryResult {
+  items?: ViewOrganization[] | null
   totalCount: number
   page: number
   pageSize: number

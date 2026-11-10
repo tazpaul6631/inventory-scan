@@ -201,9 +201,9 @@ const submit = handleSubmit(async (values) => {
         <Message v-if="formError" severity="error">{{ formError }}</Message>
       </template>
       <div class="mt-1 flex justify-end gap-2">
-        <Button type="button" :label="t('common.cancel')" :raised="false" text severity="secondary" :disabled="saving"
-          @click="close" />
-        <Button type="submit" :label="t('common.save')" icon="pi pi-check" :loading="saving"
+        <Button type="button" :label="t('common.cancel')" size="large" :raised="false" text severity="secondary"
+          :disabled="saving" @click="close" />
+        <Button type="submit" :label="t('common.save')" icon="pi pi-check" size="large" :loading="saving"
           :disabled="loading || saving" />
       </div>
     </form>

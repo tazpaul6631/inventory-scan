@@ -47,7 +47,7 @@ function goHome() {
             <h1 class=" m-0 text-2xl">{{ t('errors.pageNotFound') }}</h1>
             <p class="m-0 text-muted">{{ t('errors.pageNotFoundHint') }}</p>
             <Button :label="auth.isLoggedIn ? t('nav.dashboard') : t('auth.login')"
-                :icon="auth.isLoggedIn ? 'pi pi-home' : 'pi pi-sign-in'" @click="goHome" />
+                :icon="auth.isLoggedIn ? 'pi pi-home' : 'pi pi-sign-in'" size="large" @click="goHome" />
         </div>
     </div>
 </template>

@@ -3,7 +3,6 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
-import Button from 'primevue/button'
 import Column from 'primevue/column'
 import { queryWarehouseResult } from '@/services/api/category'
 import { readApiFailure } from '@/services/api/error'
@@ -15,7 +14,7 @@ const loading = ref(false)
 const rows = ref<ViewWarehouse[]>([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = ref(20)
+const pageSize = ref(50)
 
 async function load() {
   loading.value = true
@@ -61,12 +60,12 @@ onMounted(() => {
 
 <template>
   <div class="warehouses-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <Button icon="pi pi-sync" :label="t('warehouse.sync')" />
-    </div>
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
       <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id" @page="onPage">
+        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+        :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
         <template #empty>
           <div class="table-empty flex flex-col items-center justify-center gap-2 px-4 py-10 text-center text-muted">
             <i class="pi pi-inbox text-[1.75rem]" />

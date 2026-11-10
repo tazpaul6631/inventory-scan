@@ -15,7 +15,7 @@ export function createLoginSchema(mode: LoginMode) {
       factory: z.preprocess((value) => value ?? '', z.string().trim().min(1, t('validation.factoryRequired'))),
       cycle: z.preprocess((value) => value ?? '', z.string().trim().min(1, t('validation.cycleRequired'))),
       staffId: staffIdField(),
-      password: z.preprocess((value) => value ?? '', z.string().min(1, t('validation.passwordRequired'))),
+      password: z.preprocess((value) => value ?? '', z.string().optional()),
     })
   }
   return z.object({

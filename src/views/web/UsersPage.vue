@@ -25,7 +25,7 @@ const keyword = ref('')
 const rows = ref<ViewUser[]>([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = ref(20)
+const pageSize = ref(50)
 
 const formOpen = ref(false)
 const formMode = ref<UserFormMode>('create')
@@ -126,13 +126,16 @@ onMounted(() => {
         <InputText id="user-search" v-model="keyword" class="w-full" @keydown.enter="search" />
         <label for="user-search">{{ t('user.searchPlaceholder') }}</label>
       </FloatLabel>
-      <Button icon="pi pi-search" :label="t('common.search')" :loading="loading" @click="search" />
-      <Button icon="pi pi-plus" :label="t('user.add')" @click="openCreate" />
+      <Button icon="pi pi-search" :label="t('common.search')" size="large" :loading="loading" @click="search" />
+      <Button icon="pi pi-plus" :label="t('user.add')" size="large" @click="openCreate" />
     </div>
 
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
       <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id" @page="onPage">
+        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+        :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
         <template #empty>
           <div class="table-empty flex flex-col items-center justify-center gap-2 px-4 py-10 text-center text-muted">
             <i class="pi pi-inbox text-[1.75rem]" />
@@ -157,11 +160,11 @@ onMounted(() => {
         <Column :header="t('common.actions')">
           <template #body="{ data }">
             <div class="flex flex-nowrap items-center gap-1">
-              <Button icon="pi pi-eye" size="small" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-eye" size="large" :raised="false" text rounded severity="secondary"
                 :aria-label="t('user.viewTitle')" @click="openView(data)" />
-              <Button icon="pi pi-pencil" size="small" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-pencil" size="large" :raised="false" text rounded severity="secondary"
                 :aria-label="t('user.editTitle')" @click="openEdit(data)" />
-              <Button icon="pi pi-trash" size="small" :raised="false" text rounded severity="danger"
+              <Button icon="pi pi-trash" size="large" :raised="false" text rounded severity="danger"
                 :aria-label="t('user.deleteTitle')" @click="openDelete(data)" />
             </div>
           </template>

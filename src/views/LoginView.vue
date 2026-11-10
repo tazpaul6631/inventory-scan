@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
@@ -17,9 +17,23 @@ import { useSettingsStore } from '@/stores/settings'
 import LocaleSelect from '@/components/layout/LocaleSelect.vue'
 import { detectDeviceShell, homePathForShell, type DeviceShell } from '@/adapters/platform'
 import { useAuthStore } from '@/stores/auth'
-import { scanOnce } from '@/adapters/barcode'
+import {
+  cancelLiveScan,
+  isScanCanceled,
+  preferLiveScan,
+  scanOnce,
+  scanOnceLive,
+} from '@/adapters/barcode'
+import type { ScanResult } from '@/types'
 import { getFactoryList, queryCycleResult } from '@/services/api/category'
 import { readApiFailure } from '@/services/api/error'
+import {
+  replaceCycles,
+  replaceFactories,
+} from '@/services/repositories/offline-catalog'
+import { useOfflineDownload } from '@/composables/useOfflineDownload'
+import OfflineDownloadDialog from '@/components/offline/OfflineDownloadDialog.vue'
+import type { ViewCycle, ViewFactory } from '@/types/api'
 
 const { t, locale } = useI18n()
 const toast = useToast()
@@ -27,14 +41,35 @@ const route = useRoute()
 const router = useRouter()
 const settings = useSettingsStore()
 const auth = useAuthStore()
+const { runOfflineDownload, busy: offlineDownloading } = useOfflineDownload()
 const submitting = ref(false)
 const scanning = ref(false)
 const credentialError = ref('')
 const shell = ref<DeviceShell>(detectDeviceShell())
 const isMobileLogin = computed(() => shell.value === 'mobile')
+const factoryRows = ref<ViewFactory[]>([])
+const latestCycle = ref<ViewCycle | null>(null)
 
 function refreshShell() {
   shell.value = detectDeviceShell()
+}
+
+const liveScanOpen = ref(false)
+const LIVE_SCAN_ELEMENT_ID = 'login-live-reader'
+
+async function closeLiveScanOverlay() {
+  liveScanOpen.value = false
+  await cancelLiveScan().catch(() => undefined)
+}
+
+async function scanWithLiveFallback(): Promise<ScanResult> {
+  liveScanOpen.value = true
+  await nextTick()
+  try {
+    return await scanOnceLive(LIVE_SCAN_ELEMENT_ID)
+  } finally {
+    await closeLiveScanOverlay()
+  }
 }
 
 onMounted(() => {
@@ -44,6 +79,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', refreshShell)
+  void closeLiveScanOverlay()
 })
 
 const { defineField, handleSubmit, errors } = useForm({
@@ -78,12 +114,16 @@ async function loadFactories() {
   loadingFactories.value = true
   try {
     const res = await getFactoryList()
-    factoryOptions.value = (res.data ?? []).map((item) => {
-      const name = item.name?.trim() || ''
-      const abbr = item.abbr?.trim() || ''
-      return { label: name || abbr, value: abbr || name, id: item.id, abbr }
-    }).filter((item) => item.value)
+    factoryRows.value = res.data ?? []
+    factoryOptions.value = factoryRows.value
+      .map((item) => {
+        const name = item.name?.trim() || ''
+        const abbr = item.abbr?.trim() || ''
+        return { label: name || abbr, value: abbr || name, id: item.id, abbr }
+      })
+      .filter((item) => item.value)
   } catch (err) {
+    factoryRows.value = []
     factoryOptions.value = []
     toast.add({
       severity: 'warn',
@@ -101,15 +141,18 @@ async function loadCycle() {
   if (!factoryValue) {
     cycle.value = ''
     cycleId.value = undefined
+    latestCycle.value = null
     return
   }
   try {
     const res = await queryCycleResult()
+    latestCycle.value = res.data ?? null
     cycle.value = formatScanDate(res.data?.scanDate)
     cycleId.value = res.data?.id
   } catch (err) {
     cycle.value = ''
     cycleId.value = undefined
+    latestCycle.value = null
     toast.add({
       severity: 'warn',
       summary: readApiFailure(err) || t('auth.invalid'),
@@ -128,11 +171,6 @@ function onFactoryShow() {
   void loadFactories()
 }
 
-function isScanCanceled(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err)
-  return /cancel/i.test(message)
-}
-
 function fieldValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -143,32 +181,10 @@ function hasFactoryAndCycle() {
 
 const canSubmit = computed(() => {
   const staff = fieldValue(staffId.value)
-  const pwd = fieldValue(password.value)
-  if (!staff || !pwd) return false
-  return isMobileLogin.value ? hasFactoryAndCycle() : true
+  if (!staff) return false
+  if (isMobileLogin.value) return hasFactoryAndCycle()
+  return Boolean(fieldValue(password.value))
 })
-
-async function scanStaffId() {
-  if (scanning.value || submitting.value) return
-  scanning.value = true
-  try {
-    const result = await scanOnce()
-    const code = result.value.trim()
-    if (!code) return
-    staffId.value = code
-    if (canSubmit.value) await submit()
-  } catch (err) {
-    if (isScanCanceled(err)) return
-    toast.add({
-      severity: 'warn',
-      summary: err instanceof Error ? err.message : String(err),
-      life: 2500,
-      closable: false,
-    })
-  } finally {
-    scanning.value = false
-  }
-}
 
 function redirectAfterLogin() {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
@@ -177,27 +193,114 @@ function redirectAfterLogin() {
     : homePathForShell()
 }
 
+async function persistLoginCatalog() {
+  if (factoryRows.value.length) {
+    await replaceFactories(factoryRows.value)
+  }
+  if (latestCycle.value) {
+    await replaceCycles([latestCycle.value])
+  }
+}
+
+async function onOfflineDownloadFinished() {
+  toast.add({
+    severity: 'success',
+    summary: t('offlineDownload.success'),
+    life: 2500,
+    closable: false,
+  })
+  await router.replace(redirectAfterLogin())
+}
+
+async function continueAfterAuthSuccess(factoryValue: string, cycleValue: string) {
+  if (!isMobileLogin.value) {
+    await router.replace(redirectAfterLogin())
+    return
+  }
+  const selectedFactory = factoryOptions.value.find((item) => item.value === factoryValue)
+  const selectedFactoryId = selectedFactory?.id
+  const selectedCycleId = cycleId.value
+  await auth.setLoginSelection(
+    factoryValue,
+    cycleValue,
+    selectedFactory?.label,
+    selectedFactoryId,
+    selectedFactory?.abbr,
+    selectedCycleId,
+  )
+  try {
+    await persistLoginCatalog()
+  } catch (err) {
+    credentialError.value = readApiFailure(err) || t('offlineDownload.error')
+    return
+  }
+  if (selectedFactoryId == null || selectedCycleId == null) {
+    credentialError.value = t('offlineDownload.missingContext')
+    return
+  }
+  await runOfflineDownload({ factoryId: selectedFactoryId, cycleId: selectedCycleId })
+}
+
+async function scanStaffId() {
+  if (scanning.value || submitting.value || offlineDownloading.value || liveScanOpen.value) return
+  scanning.value = true
+  credentialError.value = ''
+  try {
+    let result: ScanResult
+    if (preferLiveScan()) {
+      result = await scanWithLiveFallback()
+    } else {
+      try {
+        result = await scanOnce()
+      } catch (err) {
+        if (isScanCanceled(err)) return
+        result = await scanWithLiveFallback()
+      }
+    }
+    const code = result.value.trim()
+    if (!code) return
+    staffId.value = code
+
+    if (isMobileLogin.value && !hasFactoryAndCycle()) {
+      credentialError.value = t('validation.factoryRequired')
+      return
+    }
+
+    const res = await auth.login(code, { platform: 'Mobile' })
+    if (res.success && auth.isLoggedIn) {
+      await continueAfterAuthSuccess(fieldValue(factory.value), fieldValue(cycle.value))
+      return
+    }
+    credentialError.value = res.message || t('auth.invalid')
+  } catch (err) {
+    if (isScanCanceled(err)) return
+    credentialError.value =
+      readApiFailure(err) || t('scan.scanFallbackManual')
+  } finally {
+    scanning.value = false
+  }
+}
+
 const submit = handleSubmit(async (values) => {
   credentialError.value = ''
   submitting.value = true
   try {
-    const res = await auth.login(String(values.staffId ?? ''), String(values.password ?? ''), {
-      requireAllowWeb: !isMobileLogin.value,
-    })
+    const code = String(values.staffId ?? '').trim()
+    if (!code) {
+      credentialError.value = t('auth.invalid')
+      return
+    }
+
+    const res = isMobileLogin.value
+      ? await auth.login(code, { platform: 'Mobile' })
+      : await auth.login(code, {
+        password: String(values.password ?? ''),
+        platform: 'Website',
+        requireAllowWeb: true,
+      })
+
     if (res.success && auth.isLoggedIn) {
-      if (isMobileLogin.value) {
-        const factoryValue = String(values.factory ?? '')
-        const selectedFactory = factoryOptions.value.find((item) => item.value === factoryValue)
-        await auth.setLoginSelection(
-          factoryValue,
-          String(values.cycle ?? ''),
-          selectedFactory?.label,
-          selectedFactory?.id,
-          selectedFactory?.abbr,
-          cycleId.value,
-        )
-      }
-      await router.replace(redirectAfterLogin())
+      await continueAfterAuthSuccess(String(values.factory ?? ''), String(values.cycle ?? ''))
       return
     }
     credentialError.value = res.message || t('auth.invalid')
@@ -263,13 +366,13 @@ const submit = handleSubmit(async (values) => {
               class="w-full" @update:model-value="clearCredentialError" />
             <label for="staff-id">{{ t('scan.staffId') }}</label>
           </FloatLabel>
-          <Button v-if="isMobileLogin" type="button" icon="pi pi-qrcode" class="shrink-0"
-            :aria-label="t('scan.checkQR')" :loading="scanning" :disabled="scanning || submitting"
+          <Button v-if="isMobileLogin" type="button" icon="pi pi-qrcode" size="large" class="shrink-0"
+            :aria-label="t('scan.checkQR')" :loading="scanning" :disabled="scanning || submitting || offlineDownloading"
             @click="scanStaffId" />
         </div>
         <small class="p-error">{{ errors.staffId }}</small>
       </div>
-      <div>
+      <div v-if="!isMobileLogin">
         <FloatLabel variant="on">
           <Password input-id="password" v-model="password" v-bind="passwordAttrs" :invalid="Boolean(errors.password)"
             class="w-full" @update:model-value="clearCredentialError" />
@@ -279,9 +382,23 @@ const submit = handleSubmit(async (values) => {
       </div>
 
       <Message v-if="credentialError" severity="error">{{ credentialError }}</Message>
-      <Button type="submit" :label="t('auth.login')" icon="pi pi-sign-in" :loading="submitting"
-        :disabled="!canSubmit || submitting" />
+      <Button type="submit" :label="t('auth.login')" icon="pi pi-sign-in" size="large"
+        :loading="submitting || offlineDownloading" :disabled="!canSubmit || submitting || offlineDownloading" />
       <p class="m-0 text-center text-xs text-muted">{{ t('footer.copyright') }}</p>
     </form>
+
+    <OfflineDownloadDialog v-if="isMobileLogin" @finished="onOfflineDownloadFinished" />
+
+    <Teleport to="body">
+      <div v-if="liveScanOpen" class="live-scan-overlay" role="dialog" aria-modal="true"
+        :aria-label="t('scan.liveScanTitle')">
+        <div class="live-scan-overlay__bar">
+          <p class="live-scan-overlay__hint m-0">{{ t('scan.liveScanHint') }}</p>
+          <Button type="button" :label="t('scan.liveScanClose')" severity="secondary" size="large"
+            @click="closeLiveScanOverlay" />
+        </div>
+        <div :id="LIVE_SCAN_ELEMENT_ID" class="live-scan-overlay__reader" />
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -3,7 +3,6 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
-import Button from 'primevue/button'
 import Column from 'primevue/column'
 import { queryAssetInfoResult } from '@/services/api/asset'
 import { readApiFailure } from '@/services/api/error'
@@ -15,7 +14,7 @@ const loading = ref(false)
 const rows = ref<ViewAssetInfo[]>([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = ref(20)
+const pageSize = ref(50)
 
 async function load() {
   loading.value = true
@@ -61,12 +60,12 @@ onMounted(() => {
 
 <template>
   <div class="asset-info-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <Button icon="pi pi-sync" :label="t('assetInfo.sync')" />
-    </div>
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
       <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" @page="onPage">
+        :rows="pageSize" :total-records="total" :first="page * pageSize"
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+        :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
         <template #empty>
           <div class="table-empty flex flex-col items-center justify-center gap-2 px-4 py-10 text-center text-muted">
             <i class="pi pi-inbox text-[1.75rem]" />
@@ -74,21 +73,15 @@ onMounted(() => {
             <p class="m-0">{{ t('assetInfo.emptyHint') }}</p>
           </div>
         </template>
-        <Column field="factoryName" :header="t('assetInfo.factoryName')" />
-        <Column field="warehouseName" :header="t('assetInfo.warehouseName')" />
-        <Column field="wPosition" :header="t('assetInfo.wPosition')" />
         <Column field="vatNo" :header="t('assetInfo.vatNo')" />
-        <Column field="orderCode" :header="t('assetInfo.orderCode')" />
-        <Column field="styleCode" :header="t('assetInfo.styleCode')" />
         <Column field="materialCode" :header="t('assetInfo.materialCode')" />
         <Column field="materialName" :header="t('assetInfo.materialName')" />
-        <Column field="materialClass" :header="t('assetInfo.materialClass')" />
-        <Column field="materialSubClass" :header="t('assetInfo.materialSubClass')" />
-        <Column field="assetState" :header="t('assetInfo.assetState')" />
-        <Column field="quality" :header="t('assetInfo.quality')" />
-        <Column field="rollNo" :header="t('assetInfo.rollNo')" />
-        <Column field="batchNo" :header="t('assetInfo.batchNo')" />
-        <Column field="count" :header="t('assetInfo.count')" />
+        <Column field="count" :header="t('assetInfo.count')" class="w-12" />
+        <Column field="wPosition" :header="t('assetInfo.wPosition')" />
+        <Column field="warehouseName" :header="t('assetInfo.warehouseName')" />
+        <Column field="materialUnitNo" :header="t('assetInfo.materialUnitNo')" />
+        <Column field="orderCode" :header="t('assetInfo.orderCode')" />
+        <Column field="rollNo" :header="t('assetInfo.rollNo')" class="w-auto" />
       </DataTable>
     </div>
   </div>

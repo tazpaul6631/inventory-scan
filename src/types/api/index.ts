@@ -2,6 +2,7 @@ export type { ApiRecord, ApiResponse } from './common'
 export type {
   UserQueryResultRequest,
   UserQueryResult,
+  LoginPlatform,
   UserValidateRequest,
   UserCreateRequest,
   UpdateUserRequest,
@@ -20,12 +21,19 @@ export type {
   ViewCycle,
   CycleQueryResultRequest,
   CycleQueryResult,
+  CreateCycleRequest,
+  UpdateCycleRequest,
+  DeleteCycleRequest,
   ViewWarehouse,
   WarehouseQueryResultRequest,
   WarehouseQueryResult,
   ViewArea,
   PositionQueryResultRequest,
   PositionQueryResult,
+  ViewOrganization,
+  OrganizationQueryResultRequest,
+  OrganizationQueryResult,
+  BasePagedQueryRequest,
 } from './category'
 export type {
   AssetQueryResultRequest,

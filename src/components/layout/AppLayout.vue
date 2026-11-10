@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import dayjs from 'dayjs'
 import Button from '@/components/ui/AppButton.vue'
 import LocaleSelect from '@/components/layout/LocaleSelect.vue'
 import UserMenu from '@/components/layout/UserMenu.vue'
@@ -19,6 +21,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { session } = storeToRefs(auth)
 const open = ref(false)
 const collapsed = ref(false)
 const hoverOpen = ref(false)
@@ -136,6 +139,7 @@ const navGroups = computed(() => {
         { to: '/web/warehouses', icon: 'pi pi-box', label: t('nav.warehouses') },
         { to: '/web/positions', icon: 'pi pi-map-marker', label: t('nav.positions') },
         { to: '/web/asset-info', icon: 'pi pi-database', label: t('nav.assetInfo') },
+        { to: '/web/organizations', icon: 'pi pi-sitemap', label: t('nav.organizations') },
         { to: '/web/asset-scan-results', icon: 'pi pi-check-square', label: t('nav.assetScanResults') },
       ],
     },
@@ -146,6 +150,52 @@ const homeTo = computed(() => (appShell.value ? '/app/mobile/scan' : '/web/users
 
 const title = computed(() =>
   navGroups.value.flatMap((group) => group.items).find((link) => link.to === route.path)?.label || t('app.name'),
+)
+
+const factoryLabel = computed(
+  () => session.value?.abbr?.trim() || session.value?.factory?.trim() || '',
+)
+
+const cycleLabel = computed(() => {
+  const cycle = session.value?.cycle?.trim()
+  if (!cycle) return ''
+  const parsed = dayjs(cycle)
+  return parsed.isValid() ? parsed.format('DD/MM/YYYY') : cycle
+})
+
+const sessionContextLabel = computed(() => {
+  const parts = [factoryLabel.value, cycleLabel.value].filter(Boolean)
+  return parts.join(' - ')
+})
+
+const hasMobileSessionContext = computed(
+  () => Boolean(factoryLabel.value) && Boolean(cycleLabel.value),
+)
+
+let enforcingMobileSession = false
+
+async function enforceMobileSessionContext() {
+  if (enforcingMobileSession) return
+  if (!appShell.value) return
+  if (!auth.isLoggedIn) return
+  if (route.name === 'login') return
+  if (hasMobileSessionContext.value) return
+
+  enforcingMobileSession = true
+  try {
+    await auth.logout()
+    await router.replace({ name: 'login' })
+  } finally {
+    enforcingMobileSession = false
+  }
+}
+
+watch(
+  [appShell, () => auth.isLoggedIn, hasMobileSessionContext, () => route.name],
+  () => {
+    void enforceMobileSessionContext()
+  },
+  { immediate: true },
 )
 </script>
 
@@ -183,12 +233,18 @@ const title = computed(() =>
         <div class="main">
           <header class="topbar">
             <div class="flex min-w-0 items-center gap-2 text-cyan-700">
-              <Button class="menu-btn" icon="pi pi-bars" :aria-label="t('nav.menu')" @click="toggleSidebar" />
+              <Button v-if="!appShell" class="menu-btn" icon="pi pi-bars" size="large" :aria-label="t('nav.menu')"
+                @click="toggleSidebar" />
               <strong class="min-w-0 truncate text-xl">{{ title }}</strong>
             </div>
             <div class="flex min-w-0 shrink items-center gap-2">
-              <LocaleSelect ref="localeSelect" :compact="shell === 'mobile'" />
-              <UserMenu ref="userMenu" :compact="shell === 'mobile'" />
+              <span v-if="appShell && hasMobileSessionContext"
+                class="min-w-0 truncate rounded-xl border border-line bg-background px-2 py-1 text-sm font-bold text-ink"
+                :title="sessionContextLabel">
+                {{ sessionContextLabel }}
+              </span>
+              <LocaleSelect v-if="!appShell" ref="localeSelect" :compact="false" />
+              <UserMenu ref="userMenu" :compact="appShell" />
             </div>
           </header>
           <section class="content">

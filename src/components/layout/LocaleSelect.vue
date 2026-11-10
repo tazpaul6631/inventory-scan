@@ -25,8 +25,8 @@ async function change(code: AppLocale) {
 
 <template>
   <FloatLabel variant="on" class="locale-select" :class="{ compact }">
-    <Select ref="select" input-id="locale-select" v-model="locale" :options="[...SUPPORTED_LOCALES]" option-label="label"
-      option-value="code" :aria-label="$t('common.language')" @update:model-value="change">
+    <Select ref="select" class="w-full" input-id="locale-select" v-model="locale" :options="[...SUPPORTED_LOCALES]"
+      option-label="label" option-value="code" :aria-label="$t('common.language')" @update:model-value="change">
       <template #value="slotProps">
         <span v-if="slotProps.value" class="locale-option">
           <img :src="localeMeta(slotProps.value).flag" alt="" />

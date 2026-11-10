@@ -5,6 +5,8 @@ import type { ScanResult } from '@/types'
 import { trError } from '@/i18n'
 
 let html5: Html5Qrcode | null = null
+/** After ML Kit/GMS unavailable or failed once, skip straight to html5 live scan. */
+let skipMlKit = false
 
 type MlKit = typeof import('@capacitor-mlkit/barcode-scanning')
 
@@ -12,80 +14,123 @@ function loadMlKit(): Promise<MlKit> {
   return import('@capacitor-mlkit/barcode-scanning')
 }
 
-async function ensureGoogleScannerModule({
-  BarcodeScanner,
-  GoogleBarcodeScannerModuleInstallState,
-}: MlKit) {
-  if (Capacitor.getPlatform() !== 'android') return
-  const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable()
-  if (available) return
-
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      void BarcodeScanner.removeAllListeners()
-      reject(new Error(trError('scanEmpty')))
-    }, 60_000)
-
-    void BarcodeScanner.addListener('googleBarcodeScannerModuleInstallProgress', (event) => {
-      if (event.state === GoogleBarcodeScannerModuleInstallState.COMPLETED) {
-        clearTimeout(timer)
-        void BarcodeScanner.removeAllListeners().then(() => resolve())
-      }
-      if (
-        event.state === GoogleBarcodeScannerModuleInstallState.FAILED
-        || event.state === GoogleBarcodeScannerModuleInstallState.CANCELED
-      ) {
-        clearTimeout(timer)
-        void BarcodeScanner.removeAllListeners().then(() => reject(new Error(trError('scanEmpty'))))
-      }
-    })
-      .then(() => BarcodeScanner.installGoogleBarcodeScannerModule())
-      .catch((err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-  })
+export function isScanCanceled(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /cancel/i.test(message)
 }
 
+/** True when this device should open html5 overlay without trying ML Kit first. */
+export function preferLiveScan(): boolean {
+  return skipMlKit || !isNative()
+}
+
+function markSkipMlKit(): void {
+  skipMlKit = true
+}
+
+/** After camera/ML Kit issues, always use html5 live scan on later attempts. */
+export function forcePreferLiveScan(): void {
+  markSkipMlKit()
+}
+
+async function requestCameraPermission(ml: MlKit): Promise<void> {
+  const { camera } = await ml.BarcodeScanner.requestPermissions()
+  if (camera !== 'granted' && camera !== 'limited') {
+    throw new Error(trError('cameraPermission'))
+  }
+}
+
+/**
+ * Google Code Scanner only — no module install wait.
+ * If unsupported / module missing, fail immediately so UI opens html5.
+ */
 export async function scanBarcodeNative(): Promise<ScanResult> {
+  if (skipMlKit) throw new Error(trError('useLiveScan'))
+
   const ml = await loadMlKit()
   const { BarcodeScanner, BarcodeFormat } = ml
 
-  if (Capacitor.getPlatform() !== 'android') {
-    const { camera } = await BarcodeScanner.requestPermissions()
-    if (camera !== 'granted' && camera !== 'limited') {
-      throw new Error(trError('cameraPermission'))
+  try {
+    const { supported } = await BarcodeScanner.isSupported()
+    if (!supported) {
+      markSkipMlKit()
+      throw new Error(trError('useLiveScan'))
     }
-  } else {
-    await ensureGoogleScannerModule(ml)
-  }
 
-  const { barcodes } = await BarcodeScanner.scan({
-    formats: [
-      BarcodeFormat.QrCode,
-      BarcodeFormat.Code128,
-      BarcodeFormat.Code39,
-      BarcodeFormat.Code93,
-      BarcodeFormat.Ean13,
-      BarcodeFormat.Ean8,
-      BarcodeFormat.UpcA,
-      BarcodeFormat.UpcE,
-      BarcodeFormat.DataMatrix,
-      BarcodeFormat.Aztec,
-    ],
-    autoZoom: true,
-  })
-  const first = barcodes[0]
-  const value = first?.rawValue?.trim()
-  if (!value) throw new Error(trError('scanEmpty'))
-  const format = String(first.format ?? '')
-  const kind = format.toLowerCase().includes('qr') ? 'qr' : 'barcode'
-  return { value, format, kind }
+    if (Capacitor.getPlatform() === 'android') {
+      const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable()
+      if (!available) {
+        // Do not installGoogleBarcodeScannerModule() — that can hang ~60s on weak/no-GMS phones.
+        markSkipMlKit()
+        throw new Error(trError('useLiveScan'))
+      }
+    }
+
+    await requestCameraPermission(ml)
+
+    const { barcodes } = await BarcodeScanner.scan({
+      formats: [
+        BarcodeFormat.QrCode,
+        BarcodeFormat.Code128,
+        BarcodeFormat.Code39,
+        BarcodeFormat.Code93,
+        BarcodeFormat.Ean13,
+        BarcodeFormat.Ean8,
+        BarcodeFormat.UpcA,
+        BarcodeFormat.UpcE,
+        BarcodeFormat.DataMatrix,
+        BarcodeFormat.Aztec,
+      ],
+      autoZoom: true,
+    })
+    const first = barcodes[0]
+    const value = first?.rawValue?.trim()
+    if (!value) throw new Error(trError('scanEmpty'))
+    const format = String(first.format ?? '')
+    const kind = format.toLowerCase().includes('qr') ? 'qr' : 'barcode'
+    return { value, format, kind }
+  } catch (err) {
+    if (!isScanCanceled(err)) markSkipMlKit()
+    throw err
+  }
 }
 
 export async function scanOnce(): Promise<ScanResult> {
   if (isNative()) return scanBarcodeNative()
   throw new Error(trError('useLiveScan'))
+}
+
+let liveScanAbort: (() => void) | null = null
+
+/** Single-shot live camera decode via WebView (works without Google Barcode Module). */
+export async function scanOnceLive(elementId: string): Promise<ScanResult> {
+  await stopLiveScan()
+  return new Promise((resolve, reject) => {
+    liveScanAbort = () => {
+      liveScanAbort = null
+      void stopLiveScan()
+        .catch(() => undefined)
+        .finally(() => reject(new Error('canceled')))
+    }
+    void startLiveScan(elementId, (result) => {
+      liveScanAbort = null
+      void stopLiveScan()
+        .catch(() => undefined)
+        .finally(() => resolve(result))
+    }).catch((err) => {
+      liveScanAbort = null
+      reject(err)
+    })
+  })
+}
+
+/** Cancel an in-flight scanOnceLive (user closed overlay). */
+export async function cancelLiveScan(): Promise<void> {
+  if (liveScanAbort) {
+    liveScanAbort()
+    return
+  }
+  await stopLiveScan()
 }
 
 export async function startLiveScan(
