@@ -455,6 +455,7 @@ function mapAssetScanRow(row: OfflineAssetScanRow, cycleId: number): OfflineAsse
     count: row.count ?? undefined,
     cycleId: row.cycle_id ?? cycleId,
     scanResult: row.scan_result,
+    scanCount: row.local_scan_qty,
     scanAt: row.scan_at,
     scanBy: row.scan_by,
     isComplete,
@@ -792,8 +793,8 @@ export async function markScanCommandError(id: string, error: string): Promise<v
 }
 
 export function localStatusFromScanResult(scanResult: AiScanResultCode): OfflineLocalScanStatus {
-  if (scanResult === 'Ok') return 'success'
-  if (scanResult === 'Duplicate') return 'duplicate'
+  if (scanResult === 'Success' || scanResult === 'Ok') return 'success'
+  if (scanResult === 'Exist' || scanResult === 'Duplicate') return 'duplicate'
   if (scanResult === 'NotFound') return 'notFound'
   if (scanResult === 'WrongWposition') return 'wrongWposition'
   // Legacy API codes — client classify no longer emits these; fold into wrongWposition.
@@ -831,7 +832,10 @@ function flagsFromLocalStatus(status: OfflineLocalScanStatus): {
   return { isComplete: false, isSuccess: false, isWarning: false, isError: false }
 }
 
-/** Merge new scan flags without clearing a higher-priority flag already set. */
+/**
+ * Merge new scan flags. Success / duplicate replace error so recover-at-correct-location
+ * can clear isError (OR-merge would keep Wrong forever).
+ */
 export function mergeScanFlags(
   existing: {
     isComplete?: boolean | null
@@ -842,6 +846,12 @@ export function mergeScanFlags(
   status: OfflineLocalScanStatus,
 ) {
   const next = flagsFromLocalStatus(status)
+  if (status === 'success') {
+    return { isComplete: true, isSuccess: true, isWarning: false, isError: false }
+  }
+  if (status === 'duplicate') {
+    return { isComplete: true, isSuccess: false, isWarning: true, isError: false }
+  }
   const isError = Boolean(existing.isError) || next.isError
   const isWarning = Boolean(existing.isWarning) || next.isWarning
   const isSuccess = Boolean(existing.isSuccess) || next.isSuccess
@@ -908,17 +918,17 @@ export async function updateOfflineAssetScanProgress(
   })
 }
 
-/** Clear cycle scans once before paging appends. */
-export async function clearAssetScansForCycle(cycleId: number): Promise<void> {
-  await run('DELETE FROM offline_asset_scans WHERE cycle_id = ?', [cycleId])
+/** Wipe all asset-scan rows once before paging replace (PK `id` is global). */
+export async function clearAllAssetScans(): Promise<void> {
+  await run('DELETE FROM offline_asset_scans')
 }
 
-/** Plain INSERT — caller must clear cycle rows first (see clearAssetScansForCycle). */
-const APPEND_ASSET_SCAN_SQL = `INSERT INTO offline_asset_scans (
+/** Upsert — caller should clearAllAssetScans first; OR REPLACE covers page overlap / retry. */
+const APPEND_ASSET_SCAN_SQL = `INSERT OR REPLACE INTO offline_asset_scans (
           id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
           material_name, count, cycle_id, scan_result, scan_at, scan_by,
           is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 export async function appendAssetScanPage(
   cycleId: number,
@@ -954,6 +964,7 @@ export async function appendAssetScanPage(
         boolInt(row.isWarning),
         boolInt(row.isError),
         seededStatus,
+        row.scanCount != null ? row.scanCount : null,
       ],
     }
   })

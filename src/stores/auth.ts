@@ -10,22 +10,7 @@ import {
   loadSession,
   saveSession,
 } from '@/services/repositories/session'
-
-function vietnamLoginAt(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date)
-  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
-  const ms = String(date.getMilliseconds()).padStart(3, '0')
-  return `${pick('year')}-${pick('month')}-${pick('day')}T${pick('hour')}:${pick('minute')}:${pick('second')}.${ms}+07:00`
-}
+import { formatVietnamDateTime } from '@/utils/localDateTime'
 
 function sessionFromUser(user: ViewValidateUser): Session | null {
   const userId = user.id?.trim()
@@ -69,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await userValidate({
       code: code.trim(),
       platform: options.platform,
-      loginAt: vietnamLoginAt(),
+      loginAt: formatVietnamDateTime(),
       ...(password ? { password } : {}),
     })
     if (!res.success || !res.data) return res

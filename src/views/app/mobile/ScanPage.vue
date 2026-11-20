@@ -55,6 +55,7 @@ import {
   type OfflineUnknownScanCode,
 } from '@/services/repositories/offline-catalog'
 import { useOfflineScanCommandSync } from '@/composables/useOfflineScanCommandSync'
+import { formatVietnamDateTime } from '@/utils/localDateTime'
 import { speakImportantText, ttsLangFromLocale } from '@/utils/speakImportantText'
 import type { AiScanResultCode, ViewAssetInfoScanResult } from '@/types/api'
 import type { ScanDirection, ScanResult } from '@/types'
@@ -313,7 +314,9 @@ function mapOfflineItem(item: OfflineAssetScanItem): ScanTableRow {
       ? 0
       : item.localScanQty != null
         ? item.localScanQty
-        : expect
+        : item.scanCount != null
+          ? item.scanCount
+          : expect
   return {
     id: item.id,
     sticker: item.vatNo?.trim() || '',
@@ -615,6 +618,7 @@ function applyLocation() {
     organization.value = null
     locationDialogOpen.value = false
     unknownBadgeCount.value = 0
+    listFilter.value = 'all'
     void loadToCheckAssets(true)
     return
   }
@@ -623,6 +627,7 @@ function applyLocation() {
   position.value = draftPosition.value
   organization.value = draftOrganization.value
   locationDialogOpen.value = false
+  listFilter.value = 'all'
   void loadToCheckAssets(true)
   void refreshUnknownBadgeCount()
 }
@@ -705,23 +710,27 @@ watch(syncPhase, (next, prev) => {
 
 const resultTitle = computed(() => {
   if (resultAwaitingPositionPick.value) return t('scan.pickWrongPosition')
-  if (resultStatus.value === 'duplicate') return t('scan.resultDuplicate')
+  // if (resultStatus.value === 'duplicate') return t('scan.resultDuplicate')
   if (resultStatus.value === 'notFound') return t('scan.resultNotFound')
-  if (resultStatus.value === 'wrongWposition') return t('scan.resultWrongWposition')
+  if (resultStatus.value === 'wrongWposition' || resultStatus.value === 'duplicate') return t('scan.resultWrongWposition')
   return t('scan.resultSuccess')
 })
 
+const resultWrongPicked = computed(() => Boolean(resultWrongPickId.value))
+
 const resultDialogStatusClass = computed(() => {
-  if (resultAwaitingPositionPick.value) return undefined
+  // Same-factory miss: red while awaiting Select.
+  if (resultAwaitingPositionPick.value) return 'scan-result-wrongWposition'
+  // After Select (pending or already scanned): sea-blue UI; API always WrongWposition.
+  if (resultWrongPicked.value) return 'scan-result-wrongPending'
   return `scan-result-${resultStatus.value}`
 })
 
 const resultValueClass = computed(() => {
-  if (resultAwaitingPositionPick.value) return ''
+  if (resultAwaitingPositionPick.value) return 'scan-status-wrongWposition'
+  if (resultWrongPicked.value) return 'scan-status-wrongPending'
   return `scan-status-${resultStatus.value}`
 })
-
-const resultWrongPicked = computed(() => Boolean(resultWrongPickId.value))
 
 const showPositionPickSelect = computed(
   () =>
@@ -738,7 +747,7 @@ const showResultDetails = computed(() => {
 })
 
 const showResultOrigin = computed(
-  () => resultStatus.value === 'wrongWposition' && resultWrongPicked.value,
+  () => resultWrongPicked.value && !resultAwaitingPositionPick.value,
 )
 
 const canConfirmResult = computed(() => {
@@ -879,15 +888,35 @@ interface ClassifyOutcome {
   scanResult: AiScanResultCode
   primary: ScanTableRow | null
   persistMatches: ScanTableRow[]
-  /** Same-factory miss: open neutral Select; Dup vs Wrong decided after pick by isComplete. */
+  /** Same-factory miss: open Select; API always WrongWposition after pick. */
   needsPositionPick?: boolean
 }
 
 /**
+ * Correct factory+warehouse+position: Success vs Exist from asset flags.
+ * - !isComplete → Success
+ * - isComplete+isError, !isWarning → Success (recover Wrong → correct)
+ * - isComplete+isError+isWarning → Exist
+ * - isComplete+isSuccess → Exist
+ * - isComplete+isWarning → Exist
+ */
+function classifyCorrectLocationScan(primary: ScanTableRow): 'Success' | 'Exist' {
+  const complete = primary.asset?.isComplete === true
+  const isError = primary.asset?.isError === true
+  const isWarning = primary.asset?.isWarning === true
+  const isSuccess = primary.asset?.isSuccess === true
+
+  if (!complete) return 'Success'
+  if (isError) return isWarning ? 'Exist' : 'Success'
+  if (isSuccess || isWarning) return 'Exist'
+  return 'Success'
+}
+
+/**
  * Full-list vatNo classify (both factories):
- * A NotFound | B Ok / Duplicate (same factory + location) |
+ * A NotFound | B Success / Exist (same factory + location by flags) |
  * C same-factory wrong location → needsPositionPick |
- * D other-factory WrongWposition | E Duplicate only after pick when complete.
+ * D other-factory WrongWposition.
  */
 async function classifyScanResult(matches: ScanTableRow[]): Promise<ClassifyOutcome> {
   if (!matches.length) {
@@ -906,13 +935,16 @@ async function classifyScanResult(matches: ScanTableRow[]): Promise<ClassifyOutc
 
     if (locationHits.length) {
       const primary = locationHits[0]
-      if (primary.status !== 'pending') {
-        return { scanResult: 'Duplicate', primary, persistMatches: sameFactory }
+      const scanResult = classifyCorrectLocationScan(primary)
+      // Only the matched location row(s) — never all same-factory vatNo rows.
+      return {
+        scanResult,
+        primary,
+        persistMatches: locationHits,
       }
-      return { scanResult: 'Ok', primary, persistMatches: locationHits }
     }
 
-    // Wrong location: defer Dup vs Wrong until user picks a position.
+    // Wrong location: open Select; API always WrongWposition after pick.
     const primary = pickWrongPositionPrimary(sameFactory)
     return {
       scanResult: 'WrongWposition',
@@ -931,8 +963,8 @@ async function classifyScanResult(matches: ScanTableRow[]): Promise<ClassifyOutc
 }
 
 function rowStatusFromScanResult(scanResult: AiScanResultCode): ResultStatus {
-  if (scanResult === 'Ok') return 'success'
-  if (scanResult === 'Duplicate') return 'duplicate'
+  if (scanResult === 'Success' || scanResult === 'Ok') return 'success'
+  if (scanResult === 'Exist' || scanResult === 'Duplicate') return 'duplicate'
   if (scanResult === 'NotFound') return 'notFound'
   // Classify only emits WrongWposition for location/other-factory misses.
   return 'wrongWposition'
@@ -1026,10 +1058,15 @@ async function fillResultDetailsFromRow(status: ResultStatus, row: ScanTableRow)
   const qty = parseQty(row.qty)
   const complete = assetIsComplete(row)
   const expect = expectCountOf(row) || 1
+  // Per-position: local_scan_qty / API scanCount / row qty; else this row's count.
+  const offline = row.asset as OfflineAssetScanItem | undefined
+  const fromAsset = offline?.localScanQty ?? offline?.scanCount ?? null
+  const savedScan =
+    fromAsset != null && fromAsset > 0 ? fromAsset : qty.count > 0 ? qty.count : expect
   resultIsComplete.value = complete
   resultName.value = row.name
-  // Placeholder + empty-save fallback: scanCount defaults to asset.count.
-  resultScanMin.value = expect
+  // Placeholder + empty-save fallback (Exist & Wrong): empty input → resultScanMin.
+  resultScanMin.value = savedScan
   resultCount.value =
     status === 'wrongWposition' || (complete && status === 'duplicate') ? null : qty.count
   resultExpect.value = expect
@@ -1085,8 +1122,8 @@ async function onWrongPositionPick(id: string | null) {
   const selected = resultWrongOptions.value.find((item) => item.value === id)
   if (!selected) return
 
-  const complete = assetIsComplete(selected.row)
-  const nextStatus: ResultStatus = complete ? 'duplicate' : 'wrongWposition'
+  // Wrong-position Select: always WrongWposition for API; UI uses wrongPending (cyan).
+  const nextStatus: ResultStatus = 'wrongWposition'
   resultStatus.value = nextStatus
   resultAwaitingPositionPick.value = false
   await fillResultDetailsFromRow(nextStatus, selected.row)
@@ -1204,7 +1241,7 @@ async function buildScanCommandPayload(
     cycleId,
     scanResult,
     scanCount,
-    scanAt: new Date().toISOString(),
+    scanAt: formatVietnamDateTime(),
     scanBy,
   }
 }
@@ -1285,9 +1322,13 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
     const status = rowStatusFromScanResult(scanResult)
     const complete = assetIsComplete(primary)
     const expect = expectCountOf(primary)
-    const scannedCount = status === 'duplicate' ? parseQty(primary.qty).count || 1 : 1
-    // Incomplete: UI + API both use expect (scanCount = count). Complete Ok uses 1.
-    const displayCount = complete ? scannedCount : expect
+    const savedScan = parseQty(primary.qty).count
+    const savedOrExpect = savedScan > 0 ? savedScan : expect
+    // Success (no qty input): use SQLite/API saved scanCount, else count.
+    // Exist complete: keep saved for dialog; incomplete non-Success: expect.
+    const scannedCount = status === 'duplicate' ? savedScan || 1 : 1
+    let displayCount =
+      scanResult === 'Success' ? savedOrExpect : complete ? scannedCount : expect
     const qty = formatQty(displayCount, expect)
     const row: ScanTableRow = {
       ...primary,
@@ -1302,8 +1343,9 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
     const deferSubmit =
       Boolean(needsPositionPick) ||
       scanResult === 'WrongWposition' ||
-      (complete && scanResult === 'Duplicate')
-    const submitScanCount = complete ? (scanResult === 'Ok' ? 1 : scannedCount) : expect
+      (complete && scanResult === 'Exist')
+    let submitScanCount =
+      scanResult === 'Success' ? savedOrExpect : complete ? scannedCount : expect
 
     // Persist immediately unless waiting for pick or complete Dup qty input.
     if (!deferSubmit) {
@@ -1359,20 +1401,31 @@ async function saveResultQty() {
     const matches = await lookupScanMatches(code)
     const sessionFactoryId = session.value?.factoryId
     const sameFactory = matches.filter((row) => rowFactoryId(row) === sessionFactoryId)
-    persistMatches = sameFactory.length ? sameFactory : matches
+    const pool = sameFactory.length ? sameFactory : matches
+    const locationHits: ScanTableRow[] = []
+    for (const row of pool) {
+      if (await locationMatches(row)) locationHits.push(row)
+    }
+    persistMatches = locationHits.length ? locationHits : pool.slice(0, 1)
     primary = persistMatches[0]
     if (!primary) return
   }
 
   const needsEnteredCount =
     resultFromPositionPick.value || status === 'wrongWposition' || resultIsComplete.value
-  const scanCount = needsEnteredCount
+  // Empty input → resultScanMin (= count/expect); entered value → use as scanCount.
+  let scanCount = needsEnteredCount
     ? resultCount.value == null || resultCount.value < 1
       ? resultScanMin.value
       : resultCount.value
     : resultExpect.value
   const qty = formatQty(scanCount, resultExpect.value)
-  const scanResult: AiScanResultCode = status === 'duplicate' ? 'Duplicate' : 'WrongWposition'
+  const scanResult: AiScanResultCode =
+    resultFromPositionPick.value || resultWrongPicked.value || status === 'wrongWposition'
+      ? 'WrongWposition'
+      : status === 'duplicate'
+        ? 'Exist'
+        : 'WrongWposition'
   const localStatus = localStatusFromScanResult(scanResult)
 
   for (const match of persistMatches) {
@@ -1497,7 +1550,7 @@ async function checkQR() {
 </script>
 
 <template>
-  <div class="page-fill gap-3 overflow-hidden">
+  <div class="page-fill gap-2 overflow-hidden">
     <div class="page-fill-panel rounded-2xl border border-line bg-white p-2 shadow-panel">
       <div class="scan-location-bar flex min-w-0 items-center gap-3">
         <div class="min-w-0 flex-1">
@@ -1653,10 +1706,10 @@ async function checkQR() {
           {{ pendingSyncBadgeLabel }}
         </span>
       </span>
-      <Button icon="pi pi-clipboard" size="large" :disabled="!canScan" :aria-label="t('scan.manualTitle')"
-        @click="openManualDialog" />
+      <Button icon="pi pi-clipboard" size="large" :disabled="!canScan || !draftPosition"
+        :aria-label="t('scan.manualTitle')" @click="openManualDialog" />
       <Button class="w-full" :label="t('scan.checkQR')" icon="pi pi-qrcode" size="large" :loading="checking"
-        :disabled="checking || !canScan" @click="checkQR" />
+        :disabled="checking || !canScan || !draftPosition" @click="checkQR" />
     </div>
 
     <Dialog v-model:visible="manualDialogOpen" modal dismissable-mask class="scan-page-dialog scan-page-dialog--xs"
@@ -1688,17 +1741,17 @@ async function checkQR() {
 
     <Dialog v-model:visible="resultOpen" modal dismissable-mask :header="resultTitle"
       :class="['scan-page-dialog', 'scan-page-dialog--xs', 'scan-result-dialog', resultDialogStatusClass]">
-      <div v-if="resultSticker" class="scan-result-row">
-        <p class="scan-result-label">{{ t('scan.sticker') }}</p>
-        <p :class="['scan-result-value', resultValueClass]">{{ resultSticker }}</p>
-      </div>
       <div v-if="showPositionPickSelect" class="scan-result-wrong-pick">
         <FloatLabel class="scan-result-wrong-pick__field min-w-0 w-full">
           <Select input-id="result-wrong-position" v-model="resultWrongPickId" class="scan-result-wrong-select w-full"
-            filter append-to="body" :options="resultWrongOptions" option-label="label" option-value="value"
+            filter append-to="body" :options="resultWrongOptions" option-label="label" option-value="value" show-clear
             :loading="loadingWrongOptions" @update:model-value="onWrongPositionPick" />
           <label for="result-wrong-position">{{ t('scan.pickWrongPositionPlaceholder') }}</label>
         </FloatLabel>
+      </div>
+      <div v-if="resultSticker" class="scan-result-row">
+        <p class="scan-result-label">{{ t('scan.sticker') }}</p>
+        <p :class="['scan-result-value', resultValueClass]">{{ resultSticker }}</p>
       </div>
       <template v-if="showResultDetails">
         <div v-if="resultName" class="scan-result-row">

@@ -10,12 +10,12 @@ import { fetchAllPages } from '@/services/api/paging'
 import { readApiFailure } from '@/services/api/error'
 import {
   appendAssetScanPage,
-  clearAssetScansForCycle,
+  clearAllAssetScans,
   replaceOrganizations,
   replacePositions,
   replaceWarehouses,
 } from '@/services/repositories/offline-catalog'
-import { withBulkWrite, withTransaction } from '@/storage/database'
+import { withBulkWrite } from '@/storage/database'
 
 export type OfflineDownloadKey = 'warehouses' | 'positions' | 'organizations' | 'assetScans'
 export type OfflineItemState = 'pending' | 'loading' | 'done' | 'error'
@@ -215,30 +215,30 @@ async function downloadOrganizations(factoryId: number) {
 
 async function downloadAssetScans(cycleId: number) {
   const item = beginStep('assetScans')
-  await withTransaction(async () => {
-    await clearAssetScansForCycle(cycleId)
-    await fetchAllPages(
-      (page, pageSize) => baseQueryAssetInfoScanViewResult({ cycleId, page, pageSize }),
-      {
-        pageSize: ASSET_SCAN_PAGE_SIZE,
-        onPage: async (rows, progress) => {
-          await appendAssetScanPage(cycleId, rows)
-          item.percent = percentFromProgress(
-            progress.downloaded,
-            progress.totalCount,
-            progress.page,
-            progress.totalPage,
-          )
-          item.detail = formatProgress(
-            progress.downloaded,
-            progress.totalCount,
-            progress.page,
-            progress.totalPage,
-          )
-        },
+  // Short per-call SQLite txns (clear + each page). Do not wrap HTTP paging in
+  // one long withTransaction — Android Capacitor SQLite drops the outer txn.
+  await clearAllAssetScans()
+  await fetchAllPages(
+    (page, pageSize) => baseQueryAssetInfoScanViewResult({ cycleId, page, pageSize }),
+    {
+      pageSize: ASSET_SCAN_PAGE_SIZE,
+      onPage: async (rows, progress) => {
+        await appendAssetScanPage(cycleId, rows)
+        item.percent = percentFromProgress(
+          progress.downloaded,
+          progress.totalCount,
+          progress.page,
+          progress.totalPage,
+        )
+        item.detail = formatProgress(
+          progress.downloaded,
+          progress.totalCount,
+          progress.page,
+          progress.totalPage,
+        )
       },
-    )
-  })
+    },
+  )
   finishStep('assetScans')
 }
 

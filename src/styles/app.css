@@ -1384,6 +1384,23 @@ body {
   background: #f6cfcb;
 }
 
+/* Wrong-position first scan after Select (pending row) — sea blue / cyan */
+.scan-result-dialog.scan-result-wrongPending,
+.scan-result-dialog.scan-result-wrongPending .p-dialog {
+  border: 2px solid #0284c7;
+  background: #e0f2fe;
+}
+
+.scan-result-dialog.scan-result-wrongPending .p-dialog-header {
+  color: #0369a1;
+  background: #bae6fd;
+}
+
+.scan-status-wrongPending {
+  color: #0369a1;
+  font-weight: 600;
+}
+
 .scan-result-dialog .scan-result-row {
   display: flex;
   align-items: center;
@@ -1442,7 +1459,7 @@ body {
   gap: 0.35rem;
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 100%;
+  max-width: 40%;
 }
 
 .scan-result-dialog .scan-result-qty .p-inputnumber,
@@ -1498,7 +1515,7 @@ body {
 }
 
 .scan-result-dialog .p-dialog-content {
-  padding: 0.5rem 0.5rem 0;
+  padding: 0.2rem 0.5rem 0;
 }
 
 .scan-result-dialog .p-dialog-header {

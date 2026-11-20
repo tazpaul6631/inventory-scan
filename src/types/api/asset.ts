@@ -53,6 +53,7 @@ export interface AssetQueryResult {
 export interface ViewAssetInfoScanResult extends ViewAssetInfo {
   cycleId?: number
   scanResult?: string | null
+  scanCount?: number | null
   scanAt?: string | null
   scanBy?: string | null
   isComplete?: boolean
@@ -72,14 +73,17 @@ export interface AssetInfoScanResultQueryResult {
 }
 
 export type AiScanResultCode =
-  | 'Ok'
+  | 'Success'
   | 'WrongFactory'
   | 'WrongWarehouse'
   | 'WrongOrganization'
   | 'WrongWposition'
   | 'MultiItems'
-  | 'Duplicate'
+  | 'Exist'
   | 'NotFound'
+  /** @deprecated legacy payloads still in offline queue */
+  | 'Ok'
+  | 'Duplicate'
 
 /** Body for POST /asset/aisrc/command — only these fields. */
 export interface CreateAiScanResultRequest {

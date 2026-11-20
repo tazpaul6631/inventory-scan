@@ -273,7 +273,7 @@ function deleteAll() {
 </script>
 
 <template>
-  <div class="page-fill gap-3 overflow-hidden">
+  <div class="page-fill gap-2 overflow-hidden">
     <div class="flex shrink-0 flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap gap-2">
         <!-- <Button icon="pi pi-refresh" :aria-label="t('common.search')" :disabled="exporting" @click="reload" /> -->

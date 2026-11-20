@@ -240,7 +240,14 @@ export async function withTransaction(work: () => Promise<void>): Promise<void> 
     txDepth += 1
     try {
       await work()
-      if (outer) await nativeDb.commitTransaction()
+      if (outer) {
+        try {
+          const active = await nativeDb.isTransactionActive()
+          if (active?.result) await nativeDb.commitTransaction()
+        } catch {
+          // Avoid masking work() success with "cannot commit - no transaction is active".
+        }
+      }
     } catch (error) {
       if (outer) {
         try {
@@ -263,7 +270,11 @@ export async function withTransaction(work: () => Promise<void>): Promise<void> 
   try {
     await work()
     if (outer) {
-      webDb.run('COMMIT')
+      try {
+        webDb.run('COMMIT')
+      } catch {
+        // Avoid masking work() success with "cannot commit - no transaction is active".
+      }
       schedulePersist()
     }
   } catch (error) {
