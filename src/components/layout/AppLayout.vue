@@ -212,7 +212,6 @@ watch(
             <img class="brand-mark" src="/logo-icon.jpg" :alt="t('app.name')" />
             <div>
               <h1>{{ t('app.name') }}</h1>
-              <!-- <p>{{ settings.current.companyName }}</p> -->
             </div>
           </RouterLink>
           <nav class="sidebar-nav">

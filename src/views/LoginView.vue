@@ -318,18 +318,17 @@ const submit = handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div
-    class="grid min-h-dvh max-h-dvh grid-rows-1 place-items-center overflow-y-auto lg:grid-cols-[minmax(280px,1fr)_minmax(360px,1fr)] lg:grid-rows-[1fr_auto] lg:place-items-stretch lg:!p-0"
+  <div class="grid min-h-dvh max-h-dvh grid-rows-1 place-items-center overflow-y-auto lg:place-items-stretch lg:!p-0"
     :style="{ padding: 'calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left))' }"
     :data-shell="shell">
-    <section
+    <!-- <section
       class="hidden flex-col items-center justify-center bg-linear-to-b from-sidebar to-sidebar-2 px-10 py-12 text-[#e7f6f1] lg:flex lg:row-start-1"
       :style="{ paddingTop: 'calc(48px + var(--safe-top))', paddingLeft: 'calc(40px + var(--safe-left))' }">
       <img class="brand-mark size-[72px] rounded-[10px]" src="/logo-icon.jpg" :alt="t('app.name')" />
       <h1 class="mt-4 mb-2 text-4xl">{{ t('app.name') }}</h1>
       <p class="m-0 opacity-80">{{ settings.current.companyName }}</p>
       <p class="mt-4 font-semibold opacity-100">{{ t(`nav.${shell}`) }}</p>
-    </section>
+    </section> -->
 
     <form
       class="mx-auto grid w-full max-w-[420px] gap-3.5 rounded-2xl border border-line bg-white p-2.5 shadow-panel md:max-w-[460px] md:p-7 lg:row-start-1 lg:mt-[calc(24px+var(--safe-top))] lg:mr-[calc(24px+var(--safe-right))] lg:mb-6 lg:ml-6 lg:max-w-[420px] lg:self-center lg:justify-self-center"

@@ -39,6 +39,8 @@ Rồi Run APK trong Android Studio. `cap:sync` đã gồm `npm run build` (copy 
 
 Label Web / Tablet / Mobile trên login chỉ theo độ rộng màn hình — cùng một APK.
 
+Link web mở trên điện thoại (Chrome, Safari) tự dùng UI mobile khi màn hình rộng dưới 768px; trên PC và tablet dùng UI web. Bản deploy web không đặt `VITE_APP_SHELL`; chỉ APK (`.env.mobile`) ép `mobile`.
+
 | Script | Việc |
 |---|---|
 | `npm run dev` | Vite `http://localhost:5173` (web) |

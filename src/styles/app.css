@@ -677,7 +677,7 @@ body {
 }
 
 .shell.collapsed.sidebar-hover:not(.drawer) .sidebar {
-  width: var(--sb-wide);
+  width: 16rem;
   align-items: stretch;
   padding: 8px 0;
   box-shadow: 0 0 0 1px rgba(13, 38, 31, 0.08), 0 16px 40px rgba(13, 38, 31, 0.22);

@@ -1,10 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { homePathForShell, pathMatchesShell } from '@/adapters/platform'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes: [
     {
       path: '/login',
