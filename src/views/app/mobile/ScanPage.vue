@@ -48,10 +48,9 @@ import {
   getOfflineFactoryTenantId,
   getOfflineWarehouseName,
   listOfflineAssetScans,
+  listOfflineAssetProgressBuckets,
   listOfflineOrganizations,
-  listOfflineOrganizationsByPosition,
   listOfflinePositions,
-  listOfflinePositionsByOrganizationOrderCode,
   countOfflineUnknownScanCodes,
   listOfflineUnknownScanCodes,
   listOfflineWarehouses,
@@ -65,6 +64,7 @@ import {
   statusFromScanFlags,
   updateOfflineAssetScanProgress,
   type OfflineAssetScanFilters,
+  type OfflineAssetProgressBucket,
   type OfflineAssetScanItem,
   type OfflineLocalScanStatus,
   type OfflineScanCommandPayload,
@@ -139,8 +139,99 @@ const draftPosition = ref<string | null>(null)
 const draftOrganization = ref<string | null>(null)
 const locationDialogOpen = ref(false)
 const warehouseOptions = ref<{ label: string; value: string }[]>([])
-const positionOptions = ref<{ label: string; value: string }[]>([])
-const organizationOptions = ref<{ label: string; value: string }[]>([])
+const positionOptions = ref<{ label: string; value: string; complete: boolean }[]>([])
+const organizationOptions = ref<{ label: string; value: string; complete: boolean }[]>([])
+
+type ScanProgressCache = {
+  key: string
+  buckets: OfflineAssetProgressBucket[]
+  orgKeys: Map<string, Set<string>>
+}
+
+let scanProgressCache: ScanProgressCache | null = null
+let scanProgressInflight: Promise<ScanProgressCache | null> | null = null
+let scanProgressEpoch = 0
+let positionLoadId = 0
+let organizationLoadId = 0
+
+function scanProgressKey(cycleId: number, factoryIdValue: number, warehouseId: number) {
+  return `${cycleId}|${factoryIdValue}|${warehouseId}`
+}
+
+function invalidateScanProgressCache() {
+  scanProgressEpoch += 1
+  scanProgressCache = null
+  scanProgressInflight = null
+}
+
+function orderMatchesOrg(orderCode: string, orgName: string, orgKeys: Map<string, Set<string>>) {
+  const keys = orgKeys.get(orgName)
+  if (!keys) return orderCode === orgName
+  return keys.has(orderCode)
+}
+
+function sumBuckets(
+  buckets: OfflineAssetProgressBucket[],
+  match: (bucket: OfflineAssetProgressBucket) => boolean,
+) {
+  let total = 0
+  let scanned = 0
+  for (const bucket of buckets) {
+    if (!match(bucket)) continue
+    total += bucket.total
+    scanned += bucket.scanned
+  }
+  return { total, scanned }
+}
+
+async function ensureScanProgress(warehouseId: string | null): Promise<ScanProgressCache | null> {
+  const cycleId = session.value?.cycleId
+  const fid = factoryId.value
+  const whId = warehouseId ? Number(warehouseId) : NaN
+  if (cycleId === undefined || fid === undefined || Number.isNaN(whId)) return null
+  const key = scanProgressKey(cycleId, fid, whId)
+  const epoch = scanProgressEpoch
+  if (scanProgressCache?.key === key) return scanProgressCache
+  if (scanProgressInflight) {
+    const pending = await scanProgressInflight
+    if (epoch !== scanProgressEpoch) return null
+    if (pending?.key === key) return pending
+  }
+  const run = (async (): Promise<ScanProgressCache | null> => {
+    const [buckets, orgs] = await Promise.all([
+      listOfflineAssetProgressBuckets({ cycleId, factoryId: fid, warehouseId: whId }),
+      listOfflineOrganizations(fid),
+    ])
+    const orgKeys = new Map<string, Set<string>>()
+    for (const org of orgs) {
+      const name = org.name?.trim() || ''
+      if (!name) continue
+      const keys = orgKeys.get(name) ?? new Set<string>()
+      keys.add(name)
+      const code = org.code?.trim()
+      if (code) keys.add(code)
+      orgKeys.set(name, keys)
+    }
+    return { key, buckets, orgKeys }
+  })()
+  scanProgressInflight = run
+  try {
+    const result = await run
+    if (epoch !== scanProgressEpoch) return null
+    if (result && scanProgressInflight === run) scanProgressCache = result
+    return result
+  } finally {
+    if (scanProgressInflight === run) scanProgressInflight = null
+  }
+}
+
+function cachedScanProgress(warehouseId: string | null): ScanProgressCache | null {
+  const cycleId = session.value?.cycleId
+  const fid = factoryId.value
+  const whId = warehouseId ? Number(warehouseId) : NaN
+  if (cycleId === undefined || fid === undefined || Number.isNaN(whId)) return null
+  return scanProgressCache?.key === scanProgressKey(cycleId, fid, whId) ? scanProgressCache : null
+}
 const loadingWarehouses = ref(false)
 const loadingPositions = ref(false)
 const loadingOrganizations = ref(false)
@@ -436,6 +527,7 @@ function onDraftWarehouseChange() {
   draftPosition.value = null
   draftOrganization.value = null
   positionOptions.value = []
+  invalidateScanProgressCache()
 }
 
 function clearDraftPositionIfMissing() {
@@ -685,7 +777,8 @@ function applyLocation() {
 }
 
 async function loadPositions(warehouseId: string | null = draftWarehouse.value) {
-  if (loadingPositions.value || !warehouseId) return
+  const loadId = ++positionLoadId
+  if (!warehouseId) return
   const fid = factoryId.value
   if (fid === undefined) {
     positionOptions.value = []
@@ -693,30 +786,21 @@ async function loadPositions(warehouseId: string | null = draftWarehouse.value) 
   }
   loadingPositions.value = true
   try {
-    const orgName = draftOrganization.value?.trim() || ''
-    const cycleId = session.value?.cycleId
-    if (orgName && cycleId !== undefined) {
-      const rows = await listOfflinePositionsByOrganizationOrderCode({
-        cycleId,
-        factoryId: fid,
-        warehouseId: Number(warehouseId),
-        organizationName: orgName,
+    const rows = await listOfflinePositions(fid, Number(warehouseId))
+    if (loadId !== positionLoadId) return
+    positionOptions.value = rows
+      .map((item) => {
+        const wposition = item.wposition?.trim() || ''
+        return {
+          label: wposition,
+          value: String(item.id),
+          complete: false,
+        }
       })
-      positionOptions.value = rows.map((item) => ({
-        label: item.wposition,
-        value: String(item.id),
-      }))
-    } else {
-      const rows = await listOfflinePositions(fid, Number(warehouseId))
-      positionOptions.value = rows
-        .map((item) => {
-          const wposition = item.wposition?.trim() || ''
-          return { label: wposition, value: String(item.id) }
-        })
-        .filter((item) => item.label)
-    }
+      .filter((item) => item.label)
     clearDraftPositionIfMissing()
   } catch (err) {
+    if (loadId !== positionLoadId) return
     positionOptions.value = []
     toast.add({
       severity: 'warn',
@@ -725,12 +809,58 @@ async function loadPositions(warehouseId: string | null = draftWarehouse.value) 
       closable: false,
     })
   } finally {
-    loadingPositions.value = false
+    if (loadId === positionLoadId) loadingPositions.value = false
   }
+  if (loadId !== positionLoadId) return
+  const cached = cachedScanProgress(warehouseId)
+  if (cached) {
+    paintPositionTicks(cached)
+    return
+  }
+  void applyPositionTicks(loadId, warehouseId)
+}
+
+function progressIsComplete(row?: { total: number; scanned: number }) {
+  return !!row && row.total > 0 && row.total === row.scanned
+}
+
+function positionCounts(
+  progress: ScanProgressCache,
+  positionId: number,
+  orgName: string,
+) {
+  return sumBuckets(
+    progress.buckets,
+    (bucket) =>
+      bucket.wPositionId === positionId &&
+      (!orgName || orderMatchesOrg(bucket.orderCode, orgName, progress.orgKeys)),
+  )
+}
+
+async function applyPositionTicks(loadId: number, warehouseId: string) {
+  const progress = await ensureScanProgress(warehouseId)
+  if (loadId !== positionLoadId) return
+  paintPositionTicks(progress)
+}
+
+function paintPositionTicks(progress: ScanProgressCache | null) {
+  const orgName = draftOrganization.value?.trim() || ''
+  positionOptions.value = positionOptions.value
+    .filter((item) => {
+      if (!orgName || !progress) return true
+      return positionCounts(progress, Number(item.value), orgName).total > 0
+    })
+    .map((item) => ({
+      ...item,
+      complete: progress
+        ? progressIsComplete(positionCounts(progress, Number(item.value), orgName))
+        : false,
+    }))
+  clearDraftPositionIfMissing()
 }
 
 async function loadOrganizations() {
-  if (loadingOrganizations.value) return
+  const loadId = ++organizationLoadId
   const fid = factoryId.value
   if (fid === undefined) {
     organizationOptions.value = []
@@ -738,36 +868,21 @@ async function loadOrganizations() {
   }
   loadingOrganizations.value = true
   try {
-    const positionId = Number(draftPosition.value)
-    const warehouseId = Number(draftWarehouse.value)
-    const cycleId = session.value?.cycleId
-    const rows =
-      draftPosition.value &&
-      draftWarehouse.value &&
-      cycleId !== undefined &&
-      Number.isFinite(positionId) &&
-      Number.isFinite(warehouseId)
-        ? await listOfflineOrganizationsByPosition({
-            cycleId,
-            factoryId: fid,
-            warehouseId,
-            wPositionId: positionId,
-          })
-        : await listOfflineOrganizations(fid)
+    const rows = await listOfflineOrganizations(fid)
+    if (loadId !== organizationLoadId) return
     organizationOptions.value = rows
       .map((item) => {
         const code = item.code?.trim() || ''
         const name = item.name?.trim() || ''
-        return { label: name || code, value: name }
+        return {
+          label: name || code,
+          value: name,
+          complete: false,
+        }
       })
       .filter((item) => item.value)
-    if (
-      draftOrganization.value &&
-      !organizationOptions.value.some((item) => item.value === draftOrganization.value)
-    ) {
-      draftOrganization.value = null
-    }
   } catch (err) {
+    if (loadId !== organizationLoadId) return
     organizationOptions.value = []
     toast.add({
       severity: 'warn',
@@ -776,7 +891,56 @@ async function loadOrganizations() {
       closable: false,
     })
   } finally {
-    loadingOrganizations.value = false
+    if (loadId === organizationLoadId) loadingOrganizations.value = false
+  }
+  if (loadId !== organizationLoadId) return
+  const cached = cachedScanProgress(draftWarehouse.value)
+  if (cached) {
+    paintOrganizationTicks(cached)
+    return
+  }
+  void applyOrganizationTicks(loadId)
+}
+
+function organizationCounts(
+  progress: ScanProgressCache,
+  orgName: string,
+  positionId: number | null,
+) {
+  return sumBuckets(
+    progress.buckets,
+    (bucket) =>
+      (positionId == null || bucket.wPositionId === positionId) &&
+      orderMatchesOrg(bucket.orderCode, orgName, progress.orgKeys),
+  )
+}
+
+async function applyOrganizationTicks(loadId: number) {
+  const progress = await ensureScanProgress(draftWarehouse.value)
+  if (loadId !== organizationLoadId) return
+  paintOrganizationTicks(progress)
+}
+
+function paintOrganizationTicks(progress: ScanProgressCache | null) {
+  const positionId = Number(draftPosition.value)
+  const selectedPosition =
+    draftPosition.value && Number.isFinite(positionId) ? positionId : null
+  organizationOptions.value = organizationOptions.value
+    .filter((item) => {
+      if (selectedPosition == null || !progress) return true
+      return organizationCounts(progress, item.value, selectedPosition).total > 0
+    })
+    .map((item) => ({
+      ...item,
+      complete: progress
+        ? progressIsComplete(organizationCounts(progress, item.value, selectedPosition))
+        : false,
+    }))
+  if (
+    draftOrganization.value &&
+    !organizationOptions.value.some((item) => item.value === draftOrganization.value)
+  ) {
+    draftOrganization.value = null
   }
 }
 
@@ -914,6 +1078,11 @@ async function persistLocalProgress(
   const ids = matches.map((row) => row.id).filter((id): id is string => Boolean(id))
   const scanBy = session.value?.userId?.trim() || null
   await updateOfflineAssetScanProgress(ids, status, count, { scanBy })
+  invalidateScanProgressCache()
+  if (locationDialogOpen.value && draftWarehouse.value) {
+    void loadPositions(draftWarehouse.value)
+    void loadOrganizations()
+  }
 
   const primary = matches[0]
   const sticker = primary?.sticker
@@ -1891,7 +2060,9 @@ async function checkQR() {
               }" @before-show="onOrganizationShow">
               <template #option="slotProps">
                 <span class="organization-select-option-row">
-                  <span class="organization-select-option-dot" aria-hidden="true" />
+                  <i v-if="slotProps.option.complete" class="pi pi-check-circle position-select-option-check"
+                    aria-hidden="true" />
+                  <i v-else class="pi pi-clipboard" aria-hidden="true" />
                   <span class="organization-select-option-label">{{ slotProps.option.label }}</span>
                 </span>
               </template>
@@ -1914,7 +2085,9 @@ async function checkQR() {
               }" @before-show="onPositionShow">
               <template #option="slotProps">
                 <span class="position-select-option-row">
-                  <span class="position-select-option-dot" aria-hidden="true" />
+                  <i v-if="slotProps.option.complete" class="pi pi-check-circle position-select-option-check"
+                    aria-hidden="true" />
+                  <i v-else class="pi pi-clipboard" aria-hidden="true" />
                   <span class="position-select-option-label">{{ slotProps.option.label }}</span>
                 </span>
               </template>
@@ -1924,8 +2097,8 @@ async function checkQR() {
         </div>
 
         <div class="mt-4 flex justify-end gap-2">
-          <!-- <Button :label="t('common.cancel')" size="large" severity="secondary" @click="closeLocationDialog" /> -->
-          <Button :label="t('scan.clearAllFilters')" size="large" severity="secondary" icon="pi pi-trash"
+          <Button :label="t('common.cancel')" size="large" severity="secondary" @click="closeLocationDialog" />
+          <Button :label="t('scan.clearAllFilters')" size="large" severity="secondary" icon="pi pi-filter-slash"
             :disabled="!canClearDraftLocation" @click="clearAllLocationFilters" />
           <Button :label="t('scan.apply')" size="large" :disabled="!canApplyLocation" @click="applyLocation" />
         </div>

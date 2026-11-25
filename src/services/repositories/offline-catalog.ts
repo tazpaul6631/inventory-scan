@@ -353,24 +353,30 @@ export async function listOfflinePositionsByOrganizationOrderCode(params: {
   factoryId: number
   warehouseId: number
   organizationName: string
-}): Promise<Array<{ id: number; wposition: string }>> {
+}): Promise<Array<{ id: number; wposition: string; realityCount: number | null; scanCount: number | null }>> {
   const name = params.organizationName.trim()
   if (!name) return []
-  const rows = await query<{ w_position_id: number | null; w_position: string | null }>(
-    `SELECT DISTINCT w_position_id, w_position
-     FROM offline_asset_scans
-     WHERE cycle_id = ?
-       AND factory_id = ?
-       AND warehouse_id = ?
-       AND w_position_id IS NOT NULL
+  const rows = await query<{
+    w_position_id: number | null
+    w_position: string | null
+    reality_count: number | null
+    scan_count: number | null
+  }>(
+    `SELECT DISTINCT a.w_position_id, a.w_position, p.reality_count, p.scan_count
+     FROM offline_asset_scans a
+     LEFT JOIN offline_positions p ON p.id = a.w_position_id
+     WHERE a.cycle_id = ?
+       AND a.factory_id = ?
+       AND a.warehouse_id = ?
+       AND a.w_position_id IS NOT NULL
        AND (
-         order_code = ?
-         OR order_code IN (
+         a.order_code = ?
+         OR a.order_code IN (
            SELECT code FROM offline_organizations
            WHERE factory_id = ? AND name = ? AND code IS NOT NULL AND TRIM(code) != ''
          )
        )
-     ORDER BY w_position COLLATE NOCASE`,
+     ORDER BY a.w_position COLLATE NOCASE`,
     [
       params.cycleId,
       params.factoryId,
@@ -385,9 +391,17 @@ export async function listOfflinePositionsByOrganizationOrderCode(params: {
       const id = row.w_position_id
       const wposition = row.w_position?.trim() || ''
       if (id == null || !Number.isFinite(id) || !wposition) return null
-      return { id, wposition }
+      return {
+        id,
+        wposition,
+        realityCount: row.reality_count,
+        scanCount: row.scan_count,
+      }
     })
-    .filter((row): row is { id: number; wposition: string } => row != null)
+    .filter(
+      (row): row is { id: number; wposition: string; realityCount: number | null; scanCount: number | null } =>
+        row != null,
+    )
 }
 
 /** Distinct orgs whose name or code matches an asset order_code at this position. */
@@ -469,6 +483,41 @@ const SQL_ASSET_SCANNED = `(
 )`
 
 const SQL_ASSET_PENDING = `(NOT ${SQL_ASSET_SCANNED})`
+
+export type OfflineAssetProgressBucket = {
+  orderCode: string
+  wPositionId: number | null
+  total: number
+  scanned: number
+}
+
+/** One pass per warehouse: totals grouped by order code and position. */
+export async function listOfflineAssetProgressBuckets(params: {
+  cycleId: number
+  factoryId: number
+  warehouseId: number
+}): Promise<OfflineAssetProgressBucket[]> {
+  const rows = await query<{
+    order_code: string | null
+    w_position_id: number | null
+    total: number
+    scanned: number
+  }>(
+    `SELECT order_code, w_position_id,
+            COUNT(*) as total,
+            SUM(CASE WHEN ${SQL_ASSET_SCANNED} THEN 1 ELSE 0 END) as scanned
+     FROM offline_asset_scans
+     WHERE cycle_id = ? AND factory_id = ? AND warehouse_id = ?
+     GROUP BY order_code, w_position_id`,
+    [params.cycleId, params.factoryId, params.warehouseId],
+  )
+  return rows.map((row) => ({
+    orderCode: row.order_code?.trim() || '',
+    wPositionId: row.w_position_id != null && Number.isFinite(row.w_position_id) ? row.w_position_id : null,
+    total: Number(row.total ?? 0),
+    scanned: Number(row.scanned ?? 0),
+  }))
+}
 
 function buildAssetScanWhere(params: OfflineAssetScanFilters): {
   where: string[]
