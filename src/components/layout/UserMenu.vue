@@ -13,7 +13,10 @@ import ChangePasswordDialog from '@/components/user/ChangePasswordDialog.vue'
 import LocaleSelect from '@/components/layout/LocaleSelect.vue'
 import ScanCommandSyncDialog from '@/components/sync/ScanCommandSyncDialog.vue'
 import { useOfflineScanCommandSync } from '@/composables/useOfflineScanCommandSync'
-import { countPendingScanCommands } from '@/services/repositories/offline-catalog'
+import {
+  clearOfflineStoreAfterLogout,
+  countAllPendingSyncItems,
+} from '@/services/repositories/offline-catalog'
 import type { MenuItem } from 'primevue/menuitem'
 
 const { compact } = defineProps<{ compact?: boolean }>()
@@ -77,6 +80,11 @@ defineExpose({ hide: hideMenu })
 
 async function performLogout() {
   logoutAfterSync.value = false
+  try {
+    await clearOfflineStoreAfterLogout()
+  } catch {
+    // best-effort local cleanup — never block sign-out
+  }
   await auth.logout()
   await router.replace({ name: 'login' })
 }
@@ -92,7 +100,7 @@ async function onSyncFinished() {
 async function onReadyForLogout() {
   if (!logoutAfterSync.value) return
   const cycleId = auth.session?.cycleId
-  const pending = await countPendingScanCommands(cycleId)
+  const pending = await countAllPendingSyncItems(cycleId)
   if (pending > 0) {
     toast.add({
       severity: 'warn',
@@ -127,16 +135,16 @@ function logout() {
     },
     accept: async () => {
       const cycleId = auth.session?.cycleId
-      const pending = await countPendingScanCommands(cycleId)
+      const pending = await countAllPendingSyncItems(cycleId)
       if (pending <= 0) {
         await performLogout()
         return
       }
       logoutAfterSync.value = true
       await startSync(cycleId, { logoutGate: true })
-      const left = await countPendingScanCommands(cycleId)
+      const left = await countAllPendingSyncItems(cycleId)
       if (left <= 0) {
-        // Dialog stays open in finished + logoutGate; Continue / 5s handles logout.
+        // Dialog stays open in finished + logoutGate; Continue / countdown handles logout.
         return
       }
       toast.add({

@@ -77,6 +77,8 @@ export interface Session {
   cycle?: string
   cycleId?: number
   abbr?: string
+  /** Mobile: true only after all offline catalog APIs finished successfully. */
+  offlineCatalogReady?: boolean
 }
 
 export interface AppSettings {

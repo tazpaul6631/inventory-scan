@@ -5,6 +5,8 @@ export interface AssetQueryResultRequest {
   warehouseId?: number | null
   wPositionId?: number | null
   cycleId?: number | null
+  /** Exact match; return every location of this code in the cycle. */
+  vatNo?: string | null
   orderCode?: string | null
   name?: string | null
   isComplete?: boolean
@@ -101,4 +103,30 @@ export interface CreateAiScanResultRequest {
   scanCount: number
   scanAt?: string | null
   scanBy: string
+}
+
+/** Online create may attach Image as binary; sync batch uses optional IFormFile Blob. */
+export type CreateAiScanResultWithImage = CreateAiScanResultRequest & {
+  image?: Blob | null
+}
+
+export type SyncAiScanResultItem = CreateAiScanResultRequest & {
+  image?: Blob | null
+}
+
+/** POST /applog/aisflc/create (multipart) / sync /sync/sc/syncaisfl */
+export interface CreateScanFailLogRequest {
+  vatNo: string
+  cycleId: number
+  createdAt: string
+  createdBy: string
+  image?: Blob | null
+}
+
+export interface SyncScanFailLogItem {
+  vatNo: string
+  cycleId: number
+  createdAt: string
+  createdBy: string
+  image?: Blob | null
 }

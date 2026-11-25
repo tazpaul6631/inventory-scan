@@ -23,11 +23,26 @@ import {
 } from '@/adapters/barcode'
 import { useAuthStore } from '@/stores/auth'
 import { useNetworkStore } from '@/stores/network'
-import { createAiScanResult } from '@/services/api/asset'
+import { createAiScanResult, createScanFailLog } from '@/services/api/asset'
 import { readApiFailure } from '@/services/api/error'
 import {
+  classifyCorrectLocationScan,
+  isAssetCompletedByFlags,
+  isSameScanBy,
+  scanResultFromCompletedFlags,
+} from '@/services/offline/classifyCorrectLocation'
+import { refreshOfflineAssetScansByVatNo } from '@/services/offline/refreshAssetScansByVatNo'
+import {
+  captureEvidencePhoto,
+  discardEvidenceFile,
+  type CapturedEvidence,
+} from '@/services/evidence-photo'
+import { insertEvidenceMedia } from '@/services/repositories/media'
+import { readBinaryFile } from '@/storage/files'
+import {
   countOfflineAssetScans,
-  countPendingScanCommands,
+  countAllPendingSyncItems,
+  deleteScanCommandsWithMedia,
   enqueueScanCommand,
   getOfflineFactoryName,
   getOfflineFactoryTenantId,
@@ -35,6 +50,7 @@ import {
   listOfflineAssetScans,
   listOfflineOrganizations,
   listOfflinePositions,
+  listOfflinePositionsByOrganizationOrderCode,
   countOfflineUnknownScanCodes,
   listOfflineUnknownScanCodes,
   listOfflineWarehouses,
@@ -132,6 +148,10 @@ const positionOverlayStyle = ref<Record<string, string>>({})
 const organizationOverlayStyle = ref<Record<string, string>>({})
 const manual = ref('')
 const manualDialogOpen = ref(false)
+const pendingEvidence = ref<CapturedEvidence | null>(null)
+const capturingEvidence = ref(false)
+/** Skip discarding draft photo when dialog closes after a successful submit. */
+let manualCloseAfterSubmit = false
 const sessionItems = ref<ScanResult[]>([])
 const resultOpen = ref(false)
 const resultStatus = ref<ResultStatus>('success')
@@ -273,7 +293,7 @@ async function refreshPendingSyncCount() {
     return
   }
   try {
-    pendingSyncCount.value = await countPendingScanCommands(cycleId)
+    pendingSyncCount.value = await countAllPendingSyncItems(cycleId)
   } catch {
     pendingSyncCount.value = 0
   }
@@ -293,6 +313,7 @@ async function openScanCommandSync() {
   }
   await startSync(session.value?.cycleId)
   await refreshPendingSyncCount()
+  await refreshUnknownBadgeCount()
 }
 
 function mapOfflineItem(item: OfflineAssetScanItem): ScanTableRow {
@@ -387,13 +408,13 @@ function optionLabel(
   options: { label: string; value: string }[],
   value: string | null,
 ): string {
-  if (!value) return '...'
+  if (!value) return '....'
   return options.find((item) => item.value === value)?.label || value
 }
 
 const locationSummary = computed(
   () =>
-    `${optionLabel(warehouseOptions.value, warehouse.value)} -> ${optionLabel(positionOptions.value, position.value)} -> ${optionLabel(organizationOptions.value, organization.value)}`,
+    `${optionLabel(warehouseOptions.value, warehouse.value)} -> ${optionLabel(organizationOptions.value, organization.value)} -> ${optionLabel(positionOptions.value, position.value)}`,
 )
 
 const draftLocationEmpty = computed(
@@ -415,6 +436,24 @@ function onDraftWarehouseChange() {
   draftOrganization.value = null
   positionOptions.value = []
 }
+
+function clearDraftPositionIfMissing() {
+  if (
+    draftPosition.value &&
+    !positionOptions.value.some((item) => item.value === draftPosition.value)
+  ) {
+    draftPosition.value = null
+  }
+}
+
+watch(draftOrganization, () => {
+  if (!draftWarehouse.value) {
+    positionOptions.value = []
+    draftPosition.value = null
+    return
+  }
+  void loadPositions(draftWarehouse.value)
+})
 
 function scrollTableToTop() {
   if (tableScrollEl) tableScrollEl.scrollTop = 0
@@ -550,6 +589,14 @@ watch([toCheckItems, loadingAssets, listFilter], () => {
   void nextTick(bindTableScroll)
 })
 
+watch(syncPhase, (phase) => {
+  if (phase !== 'finished') return
+  void refreshPendingSyncCount()
+  void refreshUnknownBadgeCount()
+  void refreshAssetCounts()
+  if (currentScanFilters()) void loadToCheckAssets(true)
+})
+
 function syncPositionOverlayWidth() {
   const el = document.querySelector('.position-select') as HTMLElement | null
   if (!el) return
@@ -641,13 +688,29 @@ async function loadPositions(warehouseId: string | null = draftWarehouse.value) 
   }
   loadingPositions.value = true
   try {
-    const rows = await listOfflinePositions(fid, Number(warehouseId))
-    positionOptions.value = rows
-      .map((item) => {
-        const wposition = item.wposition?.trim() || ''
-        return { label: wposition, value: String(item.id) }
+    const orgName = draftOrganization.value?.trim() || ''
+    const cycleId = session.value?.cycleId
+    if (orgName && cycleId !== undefined) {
+      const rows = await listOfflinePositionsByOrganizationOrderCode({
+        cycleId,
+        factoryId: fid,
+        warehouseId: Number(warehouseId),
+        organizationName: orgName,
       })
-      .filter((item) => item.label)
+      positionOptions.value = rows.map((item) => ({
+        label: item.wposition,
+        value: String(item.id),
+      }))
+    } else {
+      const rows = await listOfflinePositions(fid, Number(warehouseId))
+      positionOptions.value = rows
+        .map((item) => {
+          const wposition = item.wposition?.trim() || ''
+          return { label: wposition, value: String(item.id) }
+        })
+        .filter((item) => item.label)
+    }
+    clearDraftPositionIfMissing()
   } catch (err) {
     positionOptions.value = []
     toast.add({
@@ -710,9 +773,9 @@ watch(syncPhase, (next, prev) => {
 
 const resultTitle = computed(() => {
   if (resultAwaitingPositionPick.value) return t('scan.pickWrongPosition')
-  // if (resultStatus.value === 'duplicate') return t('scan.resultDuplicate')
+  if (resultStatus.value === 'duplicate') return t('scan.resultDuplicate')
   if (resultStatus.value === 'notFound') return t('scan.resultNotFound')
-  if (resultStatus.value === 'wrongWposition' || resultStatus.value === 'duplicate') return t('scan.resultWrongWposition')
+  if (resultStatus.value === 'wrongWposition') return t('scan.resultWrongWposition')
   return t('scan.resultSuccess')
 })
 
@@ -772,6 +835,13 @@ function toCheckRowClass(data: ScanTableRow) {
   return `scan-row-${data.status}`
 }
 
+async function refreshVatNoBeforeClassify(code: string): Promise<void> {
+  const cycleId = session.value?.cycleId
+  if (cycleId === undefined || !online.value) return
+  // Best-effort: timeout/failure → classify from local SQLite.
+  await refreshOfflineAssetScansByVatNo(cycleId, code, { takeServerLocal: false })
+}
+
 async function lookupScanMatches(code: string): Promise<ScanTableRow[]> {
   const cycleId = session.value?.cycleId
   if (cycleId === undefined) return []
@@ -783,6 +853,7 @@ function applyLocalScanProgress(
   row: ScanTableRow,
   status: OfflineLocalScanStatus,
   qty: string,
+  scanBy?: string | null,
 ) {
   const existing = {
     isComplete: row.asset?.isComplete ?? null,
@@ -792,6 +863,10 @@ function applyLocalScanProgress(
   }
   const merged = mergeScanFlags(existing, status)
   const effective = (statusFromScanFlags(merged) ?? status) as ScanRowStatus
+  const nextScanBy =
+    (status === 'success' || status === 'duplicate') && scanBy?.trim()
+      ? scanBy.trim()
+      : row.asset?.scanBy
   row.status = effective
   row.qty = qty
   row.asset = {
@@ -800,6 +875,7 @@ function applyLocalScanProgress(
     isSuccess: merged.isSuccess,
     isWarning: merged.isWarning,
     isError: merged.isError,
+    scanBy: nextScanBy,
   }
   return effective
 }
@@ -810,7 +886,8 @@ async function persistLocalProgress(
   count: number,
 ) {
   const ids = matches.map((row) => row.id).filter((id): id is string => Boolean(id))
-  await updateOfflineAssetScanProgress(ids, status, count)
+  const scanBy = session.value?.userId?.trim() || null
+  await updateOfflineAssetScanProgress(ids, status, count, { scanBy })
 
   const primary = matches[0]
   const sticker = primary?.sticker
@@ -824,11 +901,11 @@ async function persistLocalProgress(
   let effective: ScanRowStatus = status as ScanRowStatus
 
   for (const match of matches) {
-    effective = applyLocalScanProgress(match, status, qty)
+    effective = applyLocalScanProgress(match, status, qty, scanBy)
   }
   for (const row of toCheckItems.value) {
     if (row.sticker !== sticker) continue
-    effective = applyLocalScanProgress(row, status, qty)
+    effective = applyLocalScanProgress(row, status, qty, scanBy)
   }
 
   if (listFilter.value === 'pending' && effective !== 'pending') {
@@ -890,31 +967,41 @@ interface ClassifyOutcome {
   persistMatches: ScanTableRow[]
   /** Same-factory miss: open Select; API always WrongWposition after pick. */
   needsPositionPick?: boolean
+  /**
+   * isComplete + scanBy !== me: mirror BE into SQLite and upload with scanBy=me (no Exist dialog).
+   * isComplete + scanBy === me: Exist dialog path (flag unset).
+   */
+  adoptRemoteComplete?: boolean
 }
 
-/**
- * Correct factory+warehouse+position: Success vs Exist from asset flags.
- * - !isComplete → Success
- * - isComplete+isError, !isWarning → Success (recover Wrong → correct)
- * - isComplete+isError+isWarning → Exist
- * - isComplete+isSuccess → Exist
- * - isComplete+isWarning → Exist
- */
-function classifyCorrectLocationScan(primary: ScanTableRow): 'Success' | 'Exist' {
-  const complete = primary.asset?.isComplete === true
-  const isError = primary.asset?.isError === true
-  const isWarning = primary.asset?.isWarning === true
-  const isSuccess = primary.asset?.isSuccess === true
-
-  if (!complete) return 'Success'
-  if (isError) return isWarning ? 'Exist' : 'Success'
-  if (isSuccess || isWarning) return 'Exist'
-  return 'Success'
+function scanResultFromAssetOrFlags(
+  asset: ScanTableRow['asset'],
+  flags: {
+    isComplete?: boolean | null
+    isSuccess?: boolean | null
+    isWarning?: boolean | null
+    isError?: boolean | null
+  },
+): AiScanResultCode {
+  const raw = asset?.scanResult?.trim() || ''
+  if (
+    raw === 'Success' ||
+    raw === 'Ok' ||
+    raw === 'Exist' ||
+    raw === 'Duplicate' ||
+    raw === 'WrongWposition' ||
+    raw === 'NotFound'
+  ) {
+    return raw
+  }
+  return scanResultFromCompletedFlags(flags)
 }
 
 /**
  * Full-list vatNo classify (both factories):
  * A NotFound | B Success / Exist (same factory + location by flags) |
+ * B2 isComplete + other/missing scanBy → adoptRemoteComplete |
+ * B3 isComplete + same scanBy → Exist dialog |
  * C same-factory wrong location → needsPositionPick |
  * D other-factory WrongWposition.
  */
@@ -924,6 +1011,7 @@ async function classifyScanResult(matches: ScanTableRow[]): Promise<ClassifyOutc
   }
 
   const sessionFactoryId = session.value?.factoryId
+  const currentUserId = session.value?.userId
   const sameFactory = matches.filter((row) => rowFactoryId(row) === sessionFactoryId)
   const otherFactory = matches.filter((row) => rowFactoryId(row) !== sessionFactoryId)
 
@@ -935,8 +1023,31 @@ async function classifyScanResult(matches: ScanTableRow[]): Promise<ClassifyOutc
 
     if (locationHits.length) {
       const primary = locationHits[0]
-      const scanResult = classifyCorrectLocationScan(primary)
-      // Only the matched location row(s) — never all same-factory vatNo rows.
+      const flags = {
+        isComplete: primary.asset?.isComplete,
+        isSuccess: primary.asset?.isSuccess,
+        isWarning: primary.asset?.isWarning,
+        isError: primary.asset?.isError,
+      }
+
+      if (isAssetCompletedByFlags(flags)) {
+        const scanResult = scanResultFromAssetOrFlags(primary.asset, flags)
+        if (!isSameScanBy(primary.asset?.scanBy, currentUserId)) {
+          return {
+            scanResult,
+            primary,
+            persistMatches: locationHits,
+            adoptRemoteComplete: true,
+          }
+        }
+        return {
+          scanResult: scanResultFromCompletedFlags(flags),
+          primary,
+          persistMatches: locationHits,
+        }
+      }
+
+      const scanResult = classifyCorrectLocationScan(flags)
       return {
         scanResult,
         primary,
@@ -1152,6 +1263,10 @@ async function openResult(
     resultScanMin.value = 1
     clearResultOriginFields()
     resultOpen.value = true
+    void speakImportantText(
+      t('scan.speakPickWrongPosition'),
+      ttsLangFromLocale(String(locale.value)),
+    )
     await loadWrongPositionOptions(row.sticker)
     return
   }
@@ -1251,7 +1366,7 @@ async function queueAndMaybeSubmit(
   scanResult: AiScanResultCode,
   scanCount: number,
   vatNo: string,
-) {
+): Promise<string | null> {
   const payload = await buildScanCommandPayload(row, scanResult, scanCount, vatNo)
   if (!payload) {
     toast.add({
@@ -1260,22 +1375,78 @@ async function queueAndMaybeSubmit(
       life: 2500,
       closable: false,
     })
-    return false
+    return null
   }
   const commandId = await enqueueScanCommand(payload)
+
+  // Attach draft evidence (if any) before online upload so blob is available.
+  let imageBlob: Blob | null = null
+  const draft = pendingEvidence.value
+  if (draft && draft.vatNo === vatNo.trim()) {
+    try {
+      imageBlob = await readBinaryFile(draft.path)
+    } catch {
+      imageBlob = null
+    }
+    await commitPendingEvidence(commandId)
+  }
+
   void refreshPendingSyncCount()
-  // NotFound stays local (area summary); never upload / sync.
-  if (scanResult === 'NotFound' || !online.value) return true
+  if (!online.value) return commandId
+
   try {
-    const res = await createAiScanResult(payload)
-    // Enqueued already — keep pending on sync failure (no warn; avoids false "scan failed").
-    if (res.success === false) return true
+    if (scanResult === 'NotFound') {
+      const res = await createScanFailLog({
+        vatNo: payload.vatNo?.trim() || vatNo.trim(),
+        cycleId: payload.cycleId,
+        createdAt: payload.scanAt?.trim() || formatVietnamDateTime(),
+        createdBy: payload.scanBy,
+        image: imageBlob,
+      })
+      if (res.success === false) return commandId
+      await deleteScanCommandsWithMedia([commandId])
+      void refreshUnknownBadgeCount()
+      void refreshPendingSyncCount()
+      return commandId
+    }
+    const res = await createAiScanResult({
+      ...payload,
+      image: imageBlob,
+    })
+    if (res.success === false) return commandId
     await markScanCommandSynced(commandId)
     void refreshPendingSyncCount()
   } catch {
     // Offline-first: command stays pending for later sync.
   }
-  return true
+  return commandId
+}
+
+async function discardPendingEvidence() {
+  const draft = pendingEvidence.value
+  pendingEvidence.value = null
+  if (draft?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(draft.previewUrl)
+  await discardEvidenceFile(draft?.path)
+}
+
+async function commitPendingEvidence(commandId: string) {
+  const draft = pendingEvidence.value
+  if (!draft || !commandId) return
+  await insertEvidenceMedia({
+    id: draft.id,
+    recordId: commandId,
+    path: draft.path,
+    mime: draft.mime,
+    size: draft.size,
+  })
+  pendingEvidence.value = null
+  if (draft.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(draft.previewUrl)
+}
+
+async function bindEvidenceIfMatching(commandId: string | null, vatNo: string) {
+  const draft = pendingEvidence.value
+  if (!commandId || !draft || draft.vatNo !== vatNo.trim()) return
+  await commitPendingEvidence(commandId)
 }
 
 function toastNeedSession() {
@@ -1287,15 +1458,20 @@ function toastNeedSession() {
   })
 }
 
-async function saveCode(value: string, kind: 'manual' | 'barcode', format: string) {
+async function saveCode(
+  value: string,
+  kind: 'manual' | 'barcode',
+  format: string,
+): Promise<string | null> {
   const code = value.trim()
-  if (!code || savingCode.value) return
+  if (!code || savingCode.value) return null
   savingCode.value = true
   manual.value = ''
   try {
+    await refreshVatNoBeforeClassify(code)
     const matches = await lookupScanMatches(code)
     const outcome = await classifyScanResult(matches)
-    const { scanResult, persistMatches, needsPositionPick } = outcome
+    const { scanResult, persistMatches, needsPositionPick, adoptRemoteComplete } = outcome
 
     if (scanResult === 'NotFound' || !outcome.primary) {
       const row: ScanTableRow = {
@@ -1309,21 +1485,53 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
       const payload = await buildScanCommandPayload(row, 'NotFound', 1, code)
       if (!payload) {
         toastNeedSession()
-        return
+        return null
       }
       await persistScan(code, kind, format)
-      await queueAndMaybeSubmit(row, 'NotFound', 1, code)
+      const commandId = await queueAndMaybeSubmit(row, 'NotFound', 1, code)
       await refreshUnknownBadgeCount()
       await openResult('notFound', row)
-      return
+      return commandId
     }
 
     const primary = outcome.primary
-    const status = rowStatusFromScanResult(scanResult)
-    const complete = assetIsComplete(primary)
     const expect = expectCountOf(primary)
     const savedScan = parseQty(primary.qty).count
     const savedOrExpect = savedScan > 0 ? savedScan : expect
+
+    // isComplete + other/missing scanBy: mirror BE into SQLite, upload with scanBy=me (no Exist dialog).
+    if (adoptRemoteComplete && persistMatches.length) {
+      const localStatus =
+        statusFromScanFlags({
+          isComplete: primary.asset?.isComplete,
+          isSuccess: primary.asset?.isSuccess,
+          isWarning: primary.asset?.isWarning,
+          isError: primary.asset?.isError,
+        }) ?? localStatusFromScanResult(scanResult)
+      const displayCount = savedOrExpect
+      const qty = formatQty(displayCount, expect)
+      const status = rowStatusFromScanResult(scanResult)
+      const row: ScanTableRow = {
+        ...primary,
+        qty,
+        status,
+        orderCode: primary.orderCode,
+        originalWposition: primary.asset?.wPosition?.trim() || primary.originalWposition,
+      }
+      for (const match of persistMatches) {
+        match.qty = qty
+        applyLocalScanProgress(match, localStatus, qty)
+      }
+      await persistLocalProgress(persistMatches, localStatus, displayCount)
+      await persistScan(code, kind, format)
+      const commandId = await queueAndMaybeSubmit(row, scanResult, displayCount, code)
+      if (currentScanFilters()) void loadToCheckAssets(true)
+      else await refreshAssetCounts()
+      return commandId
+    }
+
+    const status = rowStatusFromScanResult(scanResult)
+    const complete = assetIsComplete(primary)
     // Success (no qty input): use SQLite/API saved scanCount, else count.
     // Exist complete: keep saved for dialog; incomplete non-Success: expect.
     const scannedCount = status === 'duplicate' ? savedScan || 1 : 1
@@ -1352,7 +1560,7 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
       const payload = await buildScanCommandPayload(row, scanResult, submitScanCount, code)
       if (!payload) {
         toastNeedSession()
-        return
+        return null
       }
       for (const match of persistMatches) {
         match.qty = qty
@@ -1365,12 +1573,12 @@ async function saveCode(value: string, kind: 'manual' | 'barcode', format: strin
       )
       await persistScan(code, kind, format)
       await openResult(status, row)
-      await queueAndMaybeSubmit(row, scanResult, submitScanCount, code)
-      return
+      return await queueAndMaybeSubmit(row, scanResult, submitScanCount, code)
     }
 
     await persistScan(code, kind, format)
     await openResult(status, row, { needsPositionPick: Boolean(needsPositionPick) })
+    return null
   } finally {
     savingCode.value = false
   }
@@ -1389,6 +1597,12 @@ async function saveResultQty() {
   }
 
   const code = resultSticker.value
+
+  // Online: refresh again before confirm so local flags match BE; still submit Exist with current user.
+  if (online.value) {
+    await refreshVatNoBeforeClassify(code)
+  }
+
   let persistMatches: ScanTableRow[] = []
   let primary: ScanTableRow | undefined
 
@@ -1449,7 +1663,14 @@ async function saveResultQty() {
   resultOpen.value = false
   resultAwaitingPositionPick.value = false
   resultFromPositionPick.value = false
-  await queueAndMaybeSubmit(row, scanResult, scanCount, code)
+  const commandId = await queueAndMaybeSubmit(row, scanResult, scanCount, code)
+  await bindEvidenceIfMatching(commandId, code)
+}
+
+function dismissWrongPositionDialog() {
+  resultOpen.value = false
+  resultAwaitingPositionPick.value = false
+  resultFromPositionPick.value = false
 }
 
 function confirmResultDialog() {
@@ -1474,25 +1695,75 @@ useBarcodeWedge(async (value) => {
   await saveCode(value, 'barcode', 'WEDGE')
 })
 
-async function saveManual() {
-  if (!canScan.value || savingCode.value) return
-  await saveCode(manual.value, 'manual', 'MANUAL')
+async function saveManual(): Promise<string | null> {
+  if (!canScan.value || savingCode.value) return null
+  return saveCode(manual.value, 'manual', 'MANUAL')
 }
 
-function openManualDialog() {
+async function openManualDialog() {
   if (!canScan.value) return
+  manualCloseAfterSubmit = false
+  // Plain manual entry: never carry a draft photo.
+  await discardPendingEvidence()
   manualDialogOpen.value = true
+}
+
+async function onManualDialogHide() {
+  manual.value = ''
+  if (manualCloseAfterSubmit) {
+    manualCloseAfterSubmit = false
+    return
+  }
+  await discardPendingEvidence()
 }
 
 function closeManualDialog() {
   manualDialogOpen.value = false
-  manual.value = ''
+}
+
+/** Toolbar camera: shoot first, then open dialog to type vatNo and bind photo. */
+async function startEvidenceCaptureFlow() {
+  if (!canScan.value || !draftPosition.value || capturingEvidence.value || savingCode.value) return
+  const cycleId = session.value?.cycleId
+  if (cycleId === undefined) {
+    toastNeedSession()
+    return
+  }
+  capturingEvidence.value = true
+  try {
+    if (pendingEvidence.value) await discardPendingEvidence()
+    pendingEvidence.value = await captureEvidencePhoto({ cycleId, vatNo: 'pending' })
+    manualCloseAfterSubmit = false
+    manualDialogOpen.value = true
+  } catch {
+    await discardPendingEvidence()
+    // toast.add({
+    //   severity: 'warn',
+    //   summary: t('scan.evidenceCaptureError'),
+    //   life: 3000,
+    //   closable: false,
+    // })
+  } finally {
+    capturingEvidence.value = false
+  }
+}
+
+async function clearManualEvidence() {
+  await discardPendingEvidence()
+  manualDialogOpen.value = false
 }
 
 async function submitManualDialog() {
-  if (!canScan.value || !manual.value.trim() || savingCode.value) return
-  await saveManual()
-  closeManualDialog()
+  const code = manual.value.trim()
+  if (!canScan.value || !code || savingCode.value) return
+  if (pendingEvidence.value && pendingEvidence.value.vatNo !== code) {
+    pendingEvidence.value = { ...pendingEvidence.value, vatNo: code }
+  }
+  const commandId = await saveManual()
+  await bindEvidenceIfMatching(commandId, code)
+  manualCloseAfterSubmit = true
+  manualDialogOpen.value = false
+  manual.value = ''
 }
 
 async function checkQR() {
@@ -1557,10 +1828,10 @@ async function checkQR() {
           <p class="scan-location-bar__label m-0">{{ t('scan.locationTitle') }}</p>
           <p class="scan-location-bar__legend m-0">
             {{ t('scan.warehouse') }}
-            <span aria-hidden="true"> -› </span>
-            {{ t('scan.position') }}
-            <span aria-hidden="true"> -› </span>
+            <span aria-hidden="true"> -> </span>
             {{ t('scan.organization') }}
+            <span aria-hidden="true"> -> </span>
+            {{ t('scan.position') }}
           </p>
           <p class="scan-location-bar__value m-0" :title="locationSummary">
             {{ locationSummary }}
@@ -1569,7 +1840,7 @@ async function checkQR() {
         <Button class="shrink-0" size="large" icon="pi pi-filter" @click="openLocationDialog" />
       </div>
 
-      <Dialog v-model:visible="locationDialogOpen" modal dismissable-mask class="scan-page-dialog scan-page-dialog--sm"
+      <Dialog v-model:visible="locationDialogOpen" modal class="scan-page-dialog scan-page-dialog--sm"
         :header="t('scan.changeLocationDialogTitle')" @hide="closeLocationDialog">
         <div class="mb-3 mt-2">
           <FloatLabel class="min-w-0">
@@ -1577,29 +1848,6 @@ async function checkQR() {
               option-label="label" option-value="value" class="w-full" :loading="loadingWarehouses"
               @before-show="loadWarehouses" @update:model-value="onDraftWarehouseChange" />
             <label for="warehouse">{{ t('scan.warehouse') }}</label>
-          </FloatLabel>
-        </div>
-
-        <div class="mb-3 min-w-0">
-          <FloatLabel class="min-w-0 w-full">
-            <Select input-id="position" v-model="draftPosition" :options="positionOptions" option-label="label"
-              option-value="value" class="position-select w-full" filter show-clear :disabled="!draftWarehouse"
-              :loading="loadingPositions" :pt="{
-                overlay: { class: 'position-select-overlay', style: positionOverlayStyle },
-                listContainer: { class: 'w-full' },
-                list: { class: 'w-full' },
-                option: { class: 'position-select-option w-full' },
-                optionLabel: { class: 'position-select-option-label' },
-                label: { class: 'position-select-label' },
-              }" @before-show="onPositionShow">
-              <template #option="slotProps">
-                <span class="position-select-option-row">
-                  <span class="position-select-option-dot" aria-hidden="true" />
-                  <span class="position-select-option-label">{{ slotProps.option.label }}</span>
-                </span>
-              </template>
-            </Select>
-            <label for="position">{{ t('scan.position') }}</label>
           </FloatLabel>
         </div>
 
@@ -1626,7 +1874,31 @@ async function checkQR() {
           </FloatLabel>
         </div>
 
+        <div class="mb-3 min-w-0">
+          <FloatLabel class="min-w-0 w-full">
+            <Select input-id="position" v-model="draftPosition" :options="positionOptions" option-label="label"
+              option-value="value" class="position-select w-full" filter show-clear :disabled="!draftWarehouse"
+              :loading="loadingPositions" :pt="{
+                overlay: { class: 'position-select-overlay', style: positionOverlayStyle },
+                listContainer: { class: 'w-full' },
+                list: { class: 'w-full' },
+                option: { class: 'position-select-option w-full' },
+                optionLabel: { class: 'position-select-option-label' },
+                label: { class: 'position-select-label' },
+              }" @before-show="onPositionShow">
+              <template #option="slotProps">
+                <span class="position-select-option-row">
+                  <span class="position-select-option-dot" aria-hidden="true" />
+                  <span class="position-select-option-label">{{ slotProps.option.label }}</span>
+                </span>
+              </template>
+            </Select>
+            <label for="position">{{ t('scan.position') }}</label>
+          </FloatLabel>
+        </div>
+
         <div class="mt-4 flex justify-end gap-2">
+          <!-- <Button :label="t('common.cancel')" size="large" severity="secondary" @click="closeLocationDialog" /> -->
           <Button :label="t('scan.clearAllFilters')" size="large" severity="secondary" icon="pi pi-trash"
             :disabled="!canClearDraftLocation" @click="clearAllLocationFilters" />
           <Button :label="t('scan.apply')" size="large" :disabled="!canApplyLocation" @click="applyLocation" />
@@ -1706,25 +1978,38 @@ async function checkQR() {
           {{ pendingSyncBadgeLabel }}
         </span>
       </span>
-      <Button icon="pi pi-clipboard" size="large" :disabled="!canScan || !draftPosition"
+      <Button icon="pi pi-camera" size="large" :aria-label="t('scan.captureEvidence')" :loading="capturingEvidence"
+        :disabled="!canScan || !draftPosition || capturingEvidence || savingCode" @click="startEvidenceCaptureFlow" />
+      <Button icon="pi pi-file-edit" size="large" :disabled="!canScan || !draftPosition"
         :aria-label="t('scan.manualTitle')" @click="openManualDialog" />
-      <Button class="w-full" :label="t('scan.checkQR')" icon="pi pi-qrcode" size="large" :loading="checking"
+      <Button class="w-full" :label="t('scan.checkQRCode')" icon="pi pi-qrcode" size="large" :loading="checking"
         :disabled="checking || !canScan || !draftPosition" @click="checkQR" />
     </div>
 
-    <Dialog v-model:visible="manualDialogOpen" modal dismissable-mask class="scan-page-dialog scan-page-dialog--xs"
-      :header="t('scan.manualTitle')" @hide="closeManualDialog">
-      <div class="mt-2">
-        <FloatLabel class="min-w-0 w-full">
-          <InputText id="manual-input" name="manual-input" v-model="manual" class="w-full" :disabled="!canScan"
-            @keydown.enter="submitManualDialog" />
-          <label for="manual-input">{{ t('scan.manualPlaceholder') }}</label>
+    <Dialog v-model:visible="manualDialogOpen" modal class="scan-page-dialog scan-page-dialog--xs"
+      :header="t('scan.manualTitle')" @hide="onManualDialogHide">
+      <div v-if="pendingEvidence" class="manual-evidence-preview">
+        <img :src="pendingEvidence.previewUrl" alt="" class="manual-evidence-preview__img" />
+        <div class="manual-evidence-preview__meta">
+          <p class="m-0 text-lg text-green-500">{{ t('scan.evidenceReady') }}</p>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center gap-2" :class="{ 'mt-4': pendingEvidence }">
+        <FloatLabel class="min-w-0 flex-1">
+          <InputText id="manual-input" name="manual-input" :model-value="manual" class="w-full uppercase"
+            autocapitalize="characters" :disabled="!canScan"
+            @update:model-value="manual = String($event ?? '').toUpperCase()" @keydown.enter="submitManualDialog" />
+          <label for="manual-input">{{ pendingEvidence ? t('scan.pendingEvidencePlaceholder') :
+            t('scan.manualPlaceholder')
+          }}</label>
         </FloatLabel>
       </div>
       <div class="mt-4 flex justify-end gap-2">
-        <Button :label="t('common.cancel')" size="large" severity="secondary" @click="closeManualDialog" />
-        <Button :label="t('scan.send')" size="large" :disabled="!canScan || !manual.trim()"
-          @click="submitManualDialog" />
+        <Button v-if="pendingEvidence" :label="t('common.cancel')" size="large" severity="secondary"
+          @click="clearManualEvidence" />
+        <Button v-else :label="t('common.cancel')" size="large" severity="secondary" @click="closeManualDialog" />
+        <Button :label="t('scan.send')" size="large"
+          :disabled="!pendingEvidence && !canScan || !manual.trim() || savingCode" @click="submitManualDialog" />
       </div>
     </Dialog>
 
@@ -1739,7 +2024,7 @@ async function checkQR() {
       </div>
     </Teleport>
 
-    <Dialog v-model:visible="resultOpen" modal dismissable-mask :header="resultTitle"
+    <Dialog v-model:visible="resultOpen" modal :header="resultTitle"
       :class="['scan-page-dialog', 'scan-page-dialog--xs', 'scan-result-dialog', resultDialogStatusClass]">
       <div v-if="showPositionPickSelect" class="scan-result-wrong-pick">
         <FloatLabel class="scan-result-wrong-pick__field min-w-0 w-full">
@@ -1787,6 +2072,9 @@ async function checkQR() {
         </div>
       </template>
       <template #footer>
+        <Button v-if="resultSticker && resultStatus !== 'success' && resultStatus !== 'notFound'"
+          :label="t('common.cancel')" size="large" severity="secondary"
+          @click="resultStatus === 'wrongWposition' ? dismissWrongPositionDialog() : confirmResultDialog()" />
         <Button v-if="editableResultQty" :label="t('common.save')" size="large" :disabled="!canConfirmResult"
           @click="saveResultQty" />
         <Button v-else :label="t('common.ok')" size="large" :disabled="!canConfirmResult"
@@ -1807,6 +2095,11 @@ async function checkQR() {
           class="scan-area-summary-table">
           <Column field="vatNo" :header="t('scan.sticker')" />
           <Column field="scanCount" :header="t('scan.areaSummaryScanCount')" />
+          <Column :header="t('scan.areaSummaryPhoto')" style="width: 3.5rem">
+            <template #body="{ data }">
+              <i v-if="data.hasPhoto" class="pi pi-image text-muted" aria-hidden="true" />
+            </template>
+          </Column>
           <Column field="lastAt" :header="t('scan.time')">
             <template #body="{ data }">
               {{ formatVnTime(data.lastAt) }}

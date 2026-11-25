@@ -16,6 +16,7 @@ const { t, locale } = useI18n()
 const {
   dialogVisible,
   phase,
+  stepList,
   total,
   done,
   failed,
@@ -57,6 +58,14 @@ const showRetry = computed(
 const showContinueLogout = computed(
   () => logoutGateActive.value && phase.value === 'finished',
 )
+
+function stepStatusLabel(state: string) {
+  if (state === 'done') return t('offlineDownload.done')
+  if (state === 'loading') return t('offlineDownload.running')
+  if (state === 'error') return t('offlineDownload.error')
+  if (state === 'skipped') return t('scan.syncStepSkipped')
+  return t('offlineDownload.waiting')
+}
 
 function clearCountdown() {
   if (countdownTimer) {
@@ -153,6 +162,35 @@ function onContinue() {
         value: (phase === 'error' ? 'bg-red-400!' : 'bg-lime-500!') + ' rounded-full!',
       }" />
     </div>
+
+    <ul class="m-0 mb-3 flex list-none flex-col gap-4 p-0">
+      <li v-for="step in stepList" :key="step.key">
+        <div class="mb-1.5 flex items-center justify-between gap-2 text-sm">
+          <span class="font-medium">{{ step.label }}</span>
+          <span class="tabular-nums text-right" :class="step.state === 'error' ? 'text-red-600' : 'text-muted'">
+            {{ stepStatusLabel(step.state) }}
+            <template v-if="step.total > 0">
+              · {{ step.done }}/{{ step.total }}
+            </template>
+          </span>
+        </div>
+        <ProgressBar
+          :mode="step.state === 'loading' ? 'indeterminate' : 'determinate'"
+          :value="step.state === 'done' || step.state === 'skipped' ? 100 : step.total > 0 ? Math.round(((step.done + step.failed) / step.total) * 100) : 0"
+          :showValue="false"
+          :pt="{
+            root: 'h-2.5! rounded-full!',
+            value:
+              (step.state === 'error'
+                ? 'bg-red-400!'
+                : step.key === 'scanFail'
+                  ? 'bg-amber-400!'
+                  : 'bg-cyan-400!') + ' rounded-full!',
+          }"
+        />
+        <p v-if="step.state === 'error' && step.error" class="mt-1 mb-0 text-xs text-red-600">{{ step.error }}</p>
+      </li>
+    </ul>
 
     <p class="m-0 text-sm tabular-nums">{{ countLabel }}</p>
     <p v-if="failed > 0 && lastError && lastError !== 'offline'" class="mt-2 mb-0 text-xs text-red-600">

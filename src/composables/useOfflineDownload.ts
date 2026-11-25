@@ -3,8 +3,8 @@ import { i18n } from '@/i18n'
 import { baseQueryAssetInfoScanViewResult } from '@/services/api/asset'
 import {
   baseQueryOrganizationResult,
-  baseQueryPositionResult,
   baseQueryWarehouseResult,
+  getAreaList,
 } from '@/services/api/category'
 import { fetchAllPages } from '@/services/api/paging'
 import { readApiFailure } from '@/services/api/error'
@@ -162,26 +162,19 @@ async function downloadWarehouses(factoryId: number) {
 
 async function downloadPositions(factoryId: number) {
   const item = beginStep('positions')
-  const collected: Parameters<typeof replacePositions>[1] = []
-  await fetchAllPages((page, pageSize) => baseQueryPositionResult({ factoryId, page, pageSize }), {
-    pageSize: CATALOG_PAGE_SIZE,
-    onPage: async (rows, progress) => {
-      collected.push(...rows)
-      item.percent = percentFromProgress(
-        progress.downloaded,
-        progress.totalCount,
-        progress.page,
-        progress.totalPage,
-      )
-      item.detail = formatProgress(
-        progress.downloaded,
-        progress.totalCount,
-        progress.page,
-        progress.totalPage,
-      )
-    },
-  })
-  await replacePositions(factoryId, collected)
+  item.percent = 10
+  item.detail = ''
+  const res = await getAreaList({ factoryId })
+  if (res.success === false) {
+    throw new Error(res.message?.trim() || i18n.global.t('offlineDownload.error'))
+  }
+  const rows = (res.data ?? []).filter(
+    (row) => row.realityCount != null && row.realityCount !== 0,
+  )
+  item.percent = 70
+  item.detail = formatProgress(rows.length, rows.length, 1, 1)
+  await replacePositions(factoryId, rows)
+  item.percent = 100
   finishStep('positions')
 }
 
@@ -282,6 +275,10 @@ export function useOfflineDownload() {
 
   const busy = computed(() => phase.value === 'running')
 
+  function allPipelineDone() {
+    return OFFLINE_PIPELINE_ORDER.every((key) => items[key].state === 'done')
+  }
+
   async function runOfflineDownload(params: { factoryId: number; cycleId: number }) {
     if (phase.value === 'running') return
     context.value = params
@@ -294,7 +291,7 @@ export function useOfflineDownload() {
           await runKey(key)
         }
       })
-      phase.value = 'finished'
+      phase.value = allPipelineDone() ? 'finished' : 'error'
     } catch {
       phase.value = 'error'
     }
@@ -321,7 +318,7 @@ export function useOfflineDownload() {
           await runKey(next)
         }
       })
-      phase.value = activeKeys.value.every((k) => items[k].state === 'done') ? 'finished' : 'error'
+      phase.value = allPipelineDone() ? 'finished' : 'error'
     } catch {
       phase.value = 'error'
     }

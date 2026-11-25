@@ -3,7 +3,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech'
 import { SystemVolume } from '@/plugins/systemVolume.plugin'
 import type { AppLocale } from '@/i18n'
 
-const IMPORTANT_TTS_MIN_VOLUME = 0.8
+const IMPORTANT_TTS_MIN_VOLUME = 0.9
 
 export function ttsLangFromLocale(locale: AppLocale | string): string {
   if (locale === 'en') return 'en-US'

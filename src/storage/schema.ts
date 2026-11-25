@@ -87,7 +87,9 @@ export const SCHEMA_STATEMENTS = [
     warehouse_id INTEGER,
     wposition TEXT,
     remark TEXT,
-    sno INTEGER
+    sno INTEGER,
+    reality_count REAL,
+    scan_count REAL
   )`,
   `CREATE TABLE IF NOT EXISTS offline_organizations (
     id TEXT PRIMARY KEY,
@@ -137,7 +139,8 @@ export const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_offline_asset_scans_cycle ON offline_asset_scans(cycle_id)`,
   `CREATE INDEX IF NOT EXISTS idx_offline_asset_scans_factory ON offline_asset_scans(factory_id)`,
   `CREATE INDEX IF NOT EXISTS idx_offline_asset_scans_vat ON offline_asset_scans(vat_no)`,
+  `CREATE INDEX IF NOT EXISTS idx_offline_asset_scans_order_pos ON offline_asset_scans(cycle_id, factory_id, warehouse_id, order_code)`,
   `CREATE INDEX IF NOT EXISTS idx_offline_scan_commands_synced ON offline_scan_commands(synced, created_at)`,
 ]
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 8

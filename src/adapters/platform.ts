@@ -35,7 +35,20 @@ export function hasGetUserMedia(): boolean {
 
 export type DeviceShell = 'web' | 'tablet' | 'mobile'
 
+/** Build-time shell override: `web` | `mobile` (from VITE_APP_SHELL). */
+export function forcedShell(): 'web' | 'mobile' | null {
+  const value = String(import.meta.env.VITE_APP_SHELL ?? '')
+    .trim()
+    .toLowerCase()
+  if (value === 'web' || value === 'mobile') return value
+  return null
+}
+
 export function detectDeviceShell(): DeviceShell {
+  const forced = forcedShell()
+  if (forced === 'mobile') return 'mobile'
+  if (forced === 'web') return 'web'
+
   const width = typeof window === 'undefined' ? 1280 : window.innerWidth
   if (width < 768) return 'mobile'
   if (width < 1024) return 'tablet'
@@ -43,6 +56,9 @@ export function detectDeviceShell(): DeviceShell {
 }
 
 export function isAppShell(): boolean {
+  const forced = forcedShell()
+  if (forced === 'mobile') return true
+  if (forced === 'web') return false
   return isNative() || detectDeviceShell() === 'mobile'
 }
 
@@ -53,4 +69,23 @@ export function homePathForShell(): string {
 export function pathMatchesShell(path: string): boolean {
   if (isAppShell()) return path.startsWith('/app/mobile')
   return path.startsWith('/web')
+}
+
+/** Production website origin that must open outside the native WebView. */
+export function publicWebOrigin(): string {
+  return String(import.meta.env.VITE_PUBLIC_WEB_ORIGIN ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+}
+
+export function isPublicWebUrl(url: string): boolean {
+  const origin = publicWebOrigin()
+  if (!origin) return false
+  try {
+    const target = new URL(url, typeof window !== 'undefined' ? window.location.href : origin)
+    const allowed = new URL(origin)
+    return target.origin === allowed.origin
+  } catch {
+    return false
+  }
 }

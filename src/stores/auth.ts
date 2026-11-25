@@ -36,8 +36,30 @@ export const useAuthStore = defineStore('auth', () => {
   const countdown = ref(3)
   const isLoggedIn = computed(() => Boolean(session.value?.userId || session.value?.code))
 
+  /** Mobile stocktake session needs offline catalog; web login does not. */
+  const needsOfflineCatalog = computed(
+    () => session.value?.factoryId != null && session.value?.cycleId != null,
+  )
+
+  const canEnterApp = computed(() => {
+    if (!isLoggedIn.value) return false
+    if (!needsOfflineCatalog.value) return true
+    return session.value?.offlineCatalogReady === true
+  })
+
   async function load() {
-    session.value = await loadSession()
+    const stored = await loadSession()
+    if (
+      stored &&
+      stored.factoryId != null &&
+      stored.cycleId != null &&
+      stored.offlineCatalogReady !== true
+    ) {
+      await clearSession()
+      session.value = null
+    } else {
+      session.value = stored
+    }
     loaded.value = true
   }
 
@@ -110,7 +132,16 @@ export const useAuthStore = defineStore('auth', () => {
       abbr: short || undefined,
       cycle: cycleToIso(cycle),
       cycleId,
+      // Incomplete until offline download finishes all APIs.
+      offlineCatalogReady: false,
     }
+    await saveSession(next)
+    session.value = next
+  }
+
+  async function markOfflineCatalogReady() {
+    if (!session.value) return
+    const next: Session = { ...session.value, offlineCatalogReady: true }
     await saveSession(next)
     session.value = next
   }
@@ -132,9 +163,12 @@ export const useAuthStore = defineStore('auth', () => {
     unauthorized,
     countdown,
     isLoggedIn,
+    needsOfflineCatalog,
+    canEnterApp,
     load,
     login,
     setLoginSelection,
+    markOfflineCatalogReady,
     logout,
     beginUnauthorized,
     expireSession,

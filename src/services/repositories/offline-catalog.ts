@@ -1,4 +1,7 @@
 import { executeSet, query, run, withTransaction } from '@/storage/database'
+import { deleteDiskFile } from '@/storage/files'
+import { isAssetCompletedByFlags } from '@/services/offline/classifyCorrectLocation'
+import { listMediaByRecordId } from '@/services/repositories/media'
 import type {
   AiScanResultCode,
   CreateAiScanResultRequest,
@@ -26,6 +29,8 @@ interface OfflinePositionRow {
   wposition: string | null
   remark: string | null
   sno: number | null
+  reality_count: number | null
+  scan_count: number | null
 }
 
 interface OfflineOrganizationRow {
@@ -193,8 +198,9 @@ export async function replacePositions(factoryId: number, rows: ViewArea[]): Pro
       unique
         .filter((row) => row.id != null)
         .map((row) => ({
-          statement: `INSERT OR REPLACE INTO offline_positions (id, factory_id, warehouse_id, wposition, remark, sno)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          statement: `INSERT OR REPLACE INTO offline_positions (
+            id, factory_id, warehouse_id, wposition, remark, sno, reality_count, scan_count
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           values: [
             row.id!,
             factoryId,
@@ -202,6 +208,8 @@ export async function replacePositions(factoryId: number, rows: ViewArea[]): Pro
             row.wposition?.trim() || null,
             row.remark?.trim() || null,
             row.sno ?? null,
+            row.realityCount ?? null,
+            row.scanCount ?? null,
           ],
         })),
     )
@@ -321,7 +329,7 @@ export async function listOfflinePositions(
   warehouseId: number,
 ): Promise<ViewArea[]> {
   const rows = await query<OfflinePositionRow>(
-    `SELECT id, factory_id, warehouse_id, wposition, remark, sno
+    `SELECT id, factory_id, warehouse_id, wposition, remark, sno, reality_count, scan_count
      FROM offline_positions
      WHERE factory_id = ? AND warehouse_id = ?
      ORDER BY wposition COLLATE NOCASE`,
@@ -334,7 +342,52 @@ export async function listOfflinePositions(
     wposition: row.wposition,
     remark: row.remark,
     sno: row.sno ?? undefined,
+    realityCount: row.reality_count,
+    scanCount: row.scan_count,
   }))
+}
+
+/** Distinct scan positions for an org via order_code (name or org.code), scoped to cycle/warehouse. */
+export async function listOfflinePositionsByOrganizationOrderCode(params: {
+  cycleId: number
+  factoryId: number
+  warehouseId: number
+  organizationName: string
+}): Promise<Array<{ id: number; wposition: string }>> {
+  const name = params.organizationName.trim()
+  if (!name) return []
+  const rows = await query<{ w_position_id: number | null; w_position: string | null }>(
+    `SELECT DISTINCT w_position_id, w_position
+     FROM offline_asset_scans
+     WHERE cycle_id = ?
+       AND factory_id = ?
+       AND warehouse_id = ?
+       AND w_position_id IS NOT NULL
+       AND (
+         order_code = ?
+         OR order_code IN (
+           SELECT code FROM offline_organizations
+           WHERE factory_id = ? AND name = ? AND code IS NOT NULL AND TRIM(code) != ''
+         )
+       )
+     ORDER BY w_position COLLATE NOCASE`,
+    [
+      params.cycleId,
+      params.factoryId,
+      params.warehouseId,
+      name,
+      params.factoryId,
+      name,
+    ],
+  )
+  return rows
+    .map((row) => {
+      const id = row.w_position_id
+      const wposition = row.w_position?.trim() || ''
+      if (id == null || !Number.isFinite(id) || !wposition) return null
+      return { id, wposition }
+    })
+    .filter((row): row is { id: number; wposition: string } => row != null)
 }
 
 export async function listOfflineOrganizations(factoryId: number): Promise<ViewOrganization[]> {
@@ -529,6 +582,8 @@ export interface OfflineUnknownScanCode {
   vatNo: string
   scanCount: number
   lastAt: string | null
+  /** True when any NotFound command for this vatNo has scan_evidence media. */
+  hasPhoto: boolean
 }
 
 export interface OfflineUnknownScanFilters {
@@ -540,25 +595,30 @@ export interface OfflineUnknownScanFilters {
   orderCode?: string
 }
 
-function buildUnknownScanWhere(params: OfflineUnknownScanFilters): {
+function buildUnknownScanWhere(
+  params: OfflineUnknownScanFilters,
+  tableAlias = '',
+): {
   where: string[]
   binds: Array<string | number>
 } {
+  const col = (name: string) => (tableAlias ? `${tableAlias}.${name}` : name)
   const where: string[] = [
-    'cycle_id = ?',
-    `scan_result = 'NotFound'`,
-    `vat_no IS NOT NULL AND TRIM(vat_no) != ''`,
-    `CAST(json_extract(payload, '$.factoryId') AS INTEGER) = ?`,
-    `CAST(json_extract(payload, '$.warehouseId') AS INTEGER) = ?`,
+    `${col('cycle_id')} = ?`,
+    `${col('scan_result')} = 'NotFound'`,
+    `${col('synced')} = 0`,
+    `${col('vat_no')} IS NOT NULL AND TRIM(${col('vat_no')}) != ''`,
+    `CAST(json_extract(${col('payload')}, '$.factoryId') AS INTEGER) = ?`,
+    `CAST(json_extract(${col('payload')}, '$.warehouseId') AS INTEGER) = ?`,
   ]
   const binds: Array<string | number> = [params.cycleId, params.factoryId, params.warehouseId]
 
   if (params.wPositionId != null) {
-    where.push(`CAST(json_extract(payload, '$.wPositionId') AS INTEGER) = ?`)
+    where.push(`CAST(json_extract(${col('payload')}, '$.wPositionId') AS INTEGER) = ?`)
     binds.push(params.wPositionId)
   }
   if (params.orderCode?.trim()) {
-    where.push(`TRIM(COALESCE(json_extract(payload, '$.orderCode'), '')) = ?`)
+    where.push(`TRIM(COALESCE(json_extract(${col('payload')}, '$.orderCode'), '')) = ?`)
     binds.push(params.orderCode.trim())
   }
   return { where, binds }
@@ -583,15 +643,23 @@ export async function listOfflineUnknownScanCodes(
   params: OfflineUnknownScanFilters,
   limit = 200,
 ): Promise<OfflineUnknownScanCode[]> {
-  const { where, binds } = buildUnknownScanWhere(params)
+  const { where, binds } = buildUnknownScanWhere(params, 'c')
   const pageBinds = [...binds, limit]
-  const rows = await query<{ vat_no: string | null; scan_count: number; last_at: string | null }>(
-    `SELECT vat_no,
+  const rows = await query<{
+    vat_no: string | null
+    scan_count: number
+    last_at: string | null
+    has_photo: number | null
+  }>(
+    `SELECT c.vat_no,
             COUNT(*) as scan_count,
-            MAX(created_at) as last_at
-     FROM offline_scan_commands
+            MAX(c.created_at) as last_at,
+            MAX(CASE WHEN m.id IS NOT NULL THEN 1 ELSE 0 END) as has_photo
+     FROM offline_scan_commands c
+     LEFT JOIN media m
+       ON m.record_id = c.id AND m.kind = 'scan_evidence'
      WHERE ${where.join(' AND ')}
-     GROUP BY vat_no
+     GROUP BY c.vat_no
      ORDER BY last_at DESC
      LIMIT ?`,
     pageBinds,
@@ -600,7 +668,8 @@ export async function listOfflineUnknownScanCodes(
     .map((row) => ({
       vatNo: row.vat_no?.trim() || '',
       scanCount: Number(row.scan_count ?? 0),
-      lastAt: row.last_at,
+      lastAt: row.last_at != null ? String(row.last_at) : null,
+      hasPhoto: Number(row.has_photo ?? 0) > 0,
     }))
     .filter((row) => Boolean(row.vatNo))
 }
@@ -703,6 +772,27 @@ export async function enqueueScanCommand(payload: OfflineScanCommandPayload): Pr
   return id
 }
 
+/** Update queued command JSON + denormalized scan_result/vat_no (e.g. Success → Exist before sync). */
+export async function updatePendingScanCommandPayload(
+  id: string,
+  payload: OfflineScanCommandPayload,
+): Promise<void> {
+  const commandId = id.trim()
+  if (!commandId) return
+  await run(
+    `UPDATE offline_scan_commands
+     SET payload = ?, scan_result = ?, vat_no = ?, cycle_id = ?
+     WHERE id = ? AND synced = 0`,
+    [
+      JSON.stringify(payload),
+      payload.scanResult?.trim() || null,
+      payload.vatNo?.trim() || null,
+      payload.cycleId ?? null,
+      commandId,
+    ],
+  )
+}
+
 export interface PendingScanCommand {
   id: string
   payload: OfflineScanCommandPayload
@@ -748,22 +838,22 @@ export async function listPendingScanCommands(
   const rows =
     cycleId != null
       ? await query<{ id: string; payload: string; sync_error: string | null }>(
-          `SELECT id, payload, sync_error FROM offline_scan_commands
+        `SELECT id, payload, sync_error FROM offline_scan_commands
            WHERE synced = 0
              AND IFNULL(scan_result, '') != 'NotFound'
              AND cycle_id = ?
            ORDER BY created_at ASC
            LIMIT ?`,
-          [cycleId, pageSize],
-        )
+        [cycleId, pageSize],
+      )
       : await query<{ id: string; payload: string; sync_error: string | null }>(
-          `SELECT id, payload, sync_error FROM offline_scan_commands
+        `SELECT id, payload, sync_error FROM offline_scan_commands
            WHERE synced = 0
              AND IFNULL(scan_result, '') != 'NotFound'
            ORDER BY created_at ASC
            LIMIT ?`,
-          [pageSize],
-        )
+        [pageSize],
+      )
 
   const items: PendingScanCommand[] = []
   for (const row of rows) {
@@ -790,6 +880,137 @@ export async function markScanCommandError(id: string, error: string): Promise<v
     error.slice(0, 500),
     id,
   ])
+}
+
+/** Delete scan commands and their evidence media/files (after successful aisfl upload). */
+export async function deleteScanCommandsWithMedia(ids: string[]): Promise<void> {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  if (!unique.length) return
+  for (const id of unique) {
+    const mediaRows = await listMediaByRecordId(id)
+    for (const row of mediaRows) {
+      try {
+        await deleteDiskFile(row.path)
+      } catch {
+        // ignore missing file
+      }
+      await run(`DELETE FROM media WHERE id = ?`, [row.id])
+    }
+    await run(`DELETE FROM offline_scan_commands WHERE id = ?`, [id])
+  }
+}
+
+/**
+ * After clean logout (no pending sync): wipe catalog, scan commands, media/files,
+ * and unused legacy tables. Keeps `settings` + `schema_meta` so schema stays ready.
+ */
+export async function clearOfflineStoreAfterLogout(): Promise<void> {
+  const mediaRows = await query<{ path: string | null }>(`SELECT path FROM media`)
+  for (const row of mediaRows) {
+    const path = row.path?.trim()
+    if (!path) continue
+    try {
+      await deleteDiskFile(path)
+    } catch {
+      // ignore missing file
+    }
+  }
+  await withTransaction(async () => {
+    await run('DELETE FROM offline_asset_scans')
+    await run('DELETE FROM offline_factories')
+    await run('DELETE FROM offline_cycles')
+    await run('DELETE FROM offline_warehouses')
+    await run('DELETE FROM offline_positions')
+    await run('DELETE FROM offline_organizations')
+    await run('DELETE FROM offline_scan_commands')
+    await run('DELETE FROM media')
+    await run('DELETE FROM products')
+    await run('DELETE FROM outbox')
+    await run('DELETE FROM scan_logs')
+    await run('DELETE FROM scale_readings')
+  })
+}
+
+export interface PendingScanFailLog {
+  id: string
+  vatNo: string
+  cycleId: number
+  createdAt: string
+  createdBy: string
+  syncError: string | null
+}
+
+/** Pending NotFound rows for /sync/sc/syncaisfl. */
+export async function countPendingScanFailLogs(cycleId?: number): Promise<number> {
+  if (cycleId != null) {
+    const rows = await query<{ c: number }>(
+      `SELECT COUNT(*) as c FROM offline_scan_commands
+       WHERE synced = 0
+         AND IFNULL(scan_result, '') = 'NotFound'
+         AND cycle_id = ?`,
+      [cycleId],
+    )
+    return Number(rows[0]?.c ?? 0)
+  }
+  const rows = await query<{ c: number }>(
+    `SELECT COUNT(*) as c FROM offline_scan_commands
+     WHERE synced = 0
+       AND IFNULL(scan_result, '') = 'NotFound'`,
+  )
+  return Number(rows[0]?.c ?? 0)
+}
+
+export async function listPendingScanFailLogs(
+  cycleId?: number,
+  limit = 50,
+): Promise<PendingScanFailLog[]> {
+  const pageSize = limit > 0 ? limit : 50
+  const rows =
+    cycleId != null
+      ? await query<{ id: string; payload: string; sync_error: string | null; created_at: number }>(
+        `SELECT id, payload, sync_error, created_at FROM offline_scan_commands
+           WHERE synced = 0
+             AND IFNULL(scan_result, '') = 'NotFound'
+             AND cycle_id = ?
+           ORDER BY created_at ASC
+           LIMIT ?`,
+        [cycleId, pageSize],
+      )
+      : await query<{ id: string; payload: string; sync_error: string | null; created_at: number }>(
+        `SELECT id, payload, sync_error, created_at FROM offline_scan_commands
+           WHERE synced = 0
+             AND IFNULL(scan_result, '') = 'NotFound'
+           ORDER BY created_at ASC
+           LIMIT ?`,
+        [pageSize],
+      )
+
+  const items: PendingScanFailLog[] = []
+  for (const row of rows) {
+    const payload = parseScanCommandPayload(row.payload)
+    const vatNo = payload?.vatNo?.trim() || ''
+    const cycle = payload?.cycleId
+    const createdBy = payload?.scanBy?.trim() || ''
+    if (!vatNo || cycle == null || !createdBy) continue
+    items.push({
+      id: row.id,
+      vatNo,
+      cycleId: cycle,
+      createdAt: payload?.scanAt?.trim() || new Date(row.created_at).toISOString(),
+      createdBy,
+      syncError: row.sync_error,
+    })
+  }
+  return items
+}
+
+/** Badge / logout: pending aisr + aisfl. */
+export async function countAllPendingSyncItems(cycleId?: number): Promise<number> {
+  const [aisr, aisfl] = await Promise.all([
+    countPendingScanCommands(cycleId),
+    countPendingScanFailLogs(cycleId),
+  ])
+  return aisr + aisfl
 }
 
 export function localStatusFromScanResult(scanResult: AiScanResultCode): OfflineLocalScanStatus {
@@ -830,6 +1051,18 @@ function flagsFromLocalStatus(status: OfflineLocalScanStatus): {
     return { isComplete: true, isSuccess: true, isWarning: false, isError: false }
   }
   return { isComplete: false, isSuccess: false, isWarning: false, isError: false }
+}
+
+/** Local progress that must survive pre-classify vatNo refresh (server may still be incomplete). */
+function isLocalScannedStatus(status: OfflineLocalScanStatus): boolean {
+  return (
+    status === 'success' ||
+    status === 'duplicate' ||
+    status === 'wrongWposition' ||
+    status === 'wrongFactory' ||
+    status === 'wrongWarehouse' ||
+    status === 'wrongOrganization'
+  )
 }
 
 /**
@@ -876,8 +1109,11 @@ export async function updateOfflineAssetScanProgress(
   ids: string[],
   status: OfflineLocalScanStatus,
   qty: number | null,
+  options?: { scanBy?: string | null },
 ): Promise<void> {
   if (!ids.length) return
+  const scanBy =
+    status === 'success' || status === 'duplicate' ? options?.scanBy?.trim() || '' : ''
   await withTransaction(async () => {
     for (const id of ids) {
       const rows = await query<{
@@ -899,21 +1135,41 @@ export async function updateOfflineAssetScanProgress(
       }
       const merged = mergeScanFlags(existing, status)
       const effective = resolveLocalScanStatus(existing, status)
-      await run(
-        `UPDATE offline_asset_scans
-         SET local_scan_status = ?, local_scan_qty = ?,
-             is_complete = ?, is_success = ?, is_warning = ?, is_error = ?
-         WHERE id = ?`,
-        [
-          effective,
-          qty,
-          boolInt(merged.isComplete),
-          boolInt(merged.isSuccess),
-          boolInt(merged.isWarning),
-          boolInt(merged.isError),
-          id,
-        ],
-      )
+      if (scanBy) {
+        await run(
+          `UPDATE offline_asset_scans
+           SET local_scan_status = ?, local_scan_qty = ?,
+               is_complete = ?, is_success = ?, is_warning = ?, is_error = ?,
+               scan_by = ?
+           WHERE id = ?`,
+          [
+            effective,
+            qty,
+            boolInt(merged.isComplete),
+            boolInt(merged.isSuccess),
+            boolInt(merged.isWarning),
+            boolInt(merged.isError),
+            scanBy,
+            id,
+          ],
+        )
+      } else {
+        await run(
+          `UPDATE offline_asset_scans
+           SET local_scan_status = ?, local_scan_qty = ?,
+               is_complete = ?, is_success = ?, is_warning = ?, is_error = ?
+           WHERE id = ?`,
+          [
+            effective,
+            qty,
+            boolInt(merged.isComplete),
+            boolInt(merged.isSuccess),
+            boolInt(merged.isWarning),
+            boolInt(merged.isError),
+            id,
+          ],
+        )
+      }
     }
   })
 }
@@ -930,6 +1186,35 @@ const APPEND_ASSET_SCAN_SQL = `INSERT OR REPLACE INTO offline_asset_scans (
           is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
+function assetScanInsertValues(
+  cycleId: number,
+  row: ViewAssetInfoScanResult & { id: string },
+  localScanStatus: string,
+  localScanQty: number | null,
+): (string | number | null)[] {
+  return [
+    row.id.trim(),
+    row.factoryId ?? null,
+    row.warehouseId ?? null,
+    row.wPositionId ?? null,
+    row.wPosition?.trim() || null,
+    row.vatNo?.trim() || null,
+    row.orderCode?.trim() || null,
+    row.materialName?.trim() || null,
+    row.count ?? null,
+    row.cycleId ?? cycleId,
+    row.scanResult?.trim() || null,
+    row.scanAt?.trim() || null,
+    row.scanBy?.trim() || null,
+    boolInt(row.isComplete),
+    boolInt(row.isSuccess),
+    boolInt(row.isWarning),
+    boolInt(row.isError),
+    localScanStatus,
+    localScanQty,
+  ]
+}
+
 export async function appendAssetScanPage(
   cycleId: number,
   rows: ViewAssetInfoScanResult[],
@@ -945,29 +1230,138 @@ export async function appendAssetScanPage(
     const seededStatus = statusFromScanFlags(row) ?? 'pending'
     return {
       statement: APPEND_ASSET_SCAN_SQL,
-      values: [
-        id,
-        row.factoryId ?? null,
-        row.warehouseId ?? null,
-        row.wPositionId ?? null,
-        row.wPosition?.trim() || null,
-        row.vatNo?.trim() || null,
-        row.orderCode?.trim() || null,
-        row.materialName?.trim() || null,
-        row.count ?? null,
-        row.cycleId ?? cycleId,
-        row.scanResult?.trim() || null,
-        row.scanAt?.trim() || null,
-        row.scanBy?.trim() || null,
-        boolInt(row.isComplete),
-        boolInt(row.isSuccess),
-        boolInt(row.isWarning),
-        boolInt(row.isError),
+      values: assetScanInsertValues(
+        cycleId,
+        { ...row, id },
         seededStatus,
         row.scanCount != null ? row.scanCount : null,
-      ],
+      ),
     }
   })
   // One native bridge round-trip per page (vs N run() calls).
+  await executeSet(set)
+}
+
+/**
+ * Merge server rows for a vatNo refresh.
+ * - `count` / `scanCount`→local_scan_qty: use API value when present, else keep SQLite.
+ * - Server already complete → always take flags + scan_by + local_scan_status from server
+ *   (online must see other users' work).
+ * - `takeServerLocal: false` + server incomplete + local already scanned → keep local
+ *   flags/status/scan_by (offline Success not yet on BE → second scan Exist).
+ * - `takeServerLocal: true` (after batch sync): seed local_scan_status from server.
+ */
+export async function mergeAssetScanPageFromServer(
+  cycleId: number,
+  rows: ViewAssetInfoScanResult[],
+  options?: { takeServerLocal?: boolean },
+): Promise<void> {
+  if (!rows.length) return
+  const takeServerLocal = options?.takeServerLocal === true
+  const normalized = rows.map((row) => ({
+    ...row,
+    id: row.id?.trim() || createId(),
+  }))
+  const unique = dedupeById(normalized, (row) => row.id)
+  const ids = unique.map((row) => row.id!.trim())
+
+  const existingById = new Map<
+    string,
+    {
+      count: number | null
+      local_scan_status: string | null
+      local_scan_qty: number | null
+      scan_by: string | null
+      is_complete: number | null
+      is_success: number | null
+      is_warning: number | null
+      is_error: number | null
+    }
+  >()
+  if (ids.length) {
+    const chunkSize = 200
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize)
+      const placeholders = chunk.map(() => '?').join(', ')
+      const existing = await query<{
+        id: string
+        count: number | null
+        local_scan_status: string | null
+        local_scan_qty: number | null
+        scan_by: string | null
+        is_complete: number | null
+        is_success: number | null
+        is_warning: number | null
+        is_error: number | null
+      }>(
+        `SELECT id, count, local_scan_status, local_scan_qty, scan_by,
+                is_complete, is_success, is_warning, is_error
+         FROM offline_asset_scans
+         WHERE id IN (${placeholders})`,
+        chunk,
+      )
+      for (const row of existing) {
+        existingById.set(row.id, {
+          count: row.count,
+          local_scan_status: row.local_scan_status,
+          local_scan_qty: row.local_scan_qty,
+          scan_by: row.scan_by,
+          is_complete: row.is_complete,
+          is_success: row.is_success,
+          is_warning: row.is_warning,
+          is_error: row.is_error,
+        })
+      }
+    }
+  }
+
+  const set = unique.map((row) => {
+    const id = row.id!.trim()
+    const seededStatus = statusFromScanFlags(row) ?? 'pending'
+    const prev = existingById.get(id)
+    const mergedCount = row.count != null ? row.count : (prev?.count ?? null)
+    const localQty =
+      row.scanCount != null ? row.scanCount : (prev?.local_scan_qty ?? null)
+    const serverComplete = isAssetCompletedByFlags(row)
+    const trustServer = takeServerLocal || serverComplete
+    const keepLocalStatus =
+      !trustServer && prev?.local_scan_status != null && prev.local_scan_status !== ''
+    const localStatus = keepLocalStatus ? prev!.local_scan_status! : seededStatus
+    const localStatusNorm = normalizeLocalScanStatus(localStatus)
+    const preserveLocalFlags =
+      keepLocalStatus && isLocalScannedStatus(localStatusNorm)
+
+    let mergedRow: ViewAssetInfoScanResult & { id: string } = {
+      ...row,
+      id,
+      count: mergedCount ?? undefined,
+    }
+    if (preserveLocalFlags) {
+      const fromDb = {
+        isComplete: prev!.is_complete === 1,
+        isSuccess: prev!.is_success === 1,
+        isWarning: prev!.is_warning === 1,
+        isError: prev!.is_error === 1,
+      }
+      const flags =
+        statusFromScanFlags(fromDb) != null || fromDb.isComplete
+          ? fromDb
+          : flagsFromLocalStatus(localStatusNorm)
+      const localScanBy = prev!.scan_by?.trim() || ''
+      mergedRow = {
+        ...mergedRow,
+        isComplete: flags.isComplete,
+        isSuccess: flags.isSuccess,
+        isWarning: flags.isWarning,
+        isError: flags.isError,
+        scanBy: localScanBy || mergedRow.scanBy,
+      }
+    }
+
+    return {
+      statement: APPEND_ASSET_SCAN_SQL,
+      values: assetScanInsertValues(cycleId, mergedRow, localStatus, localQty),
+    }
+  })
   await executeSet(set)
 }

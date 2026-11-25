@@ -43,4 +43,8 @@ export type {
   AssetInfoScanResultQueryResult,
   AiScanResultCode,
   CreateAiScanResultRequest,
+  CreateAiScanResultWithImage,
+  SyncAiScanResultItem,
+  CreateScanFailLogRequest,
+  SyncScanFailLogItem,
 } from './asset'

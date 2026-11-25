@@ -83,10 +83,11 @@ router.beforeEach((to) => {
     return to.name !== 'login'
   }
   if (to.meta.public) {
-    if (auth.isLoggedIn && to.name === 'login') return homePathForShell()
+    // Incomplete mobile offline download must stay on login (do not bounce to home).
+    if (auth.canEnterApp && to.name === 'login') return homePathForShell()
     return true
   }
-  if (!auth.isLoggedIn) {
+  if (!auth.canEnterApp) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (!pathMatchesShell(to.path)) return homePathForShell()

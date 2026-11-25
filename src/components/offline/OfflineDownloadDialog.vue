@@ -13,6 +13,7 @@ import {
 
 const emit = defineEmits<{
   finished: []
+  aborted: []
 }>()
 
 const { t } = useI18n()
@@ -141,6 +142,7 @@ function onClose() {
   stopFinishTimer()
   closeDialog()
   if (wasFinished) emit('finished')
+  else emit('aborted')
 }
 </script>
 
@@ -196,8 +198,8 @@ function onClose() {
 
     <div class="mt-4 flex justify-end gap-2">
       <Button v-if="phase === 'finished'" :label="continueLabel" size="large" @click="onClose" />
-      <Button v-else :label="t('common.cancel')" size="large" :disabled="!canClose" :raised="false" text
-        severity="secondary" @click="onClose" />
+      <!-- <Button v-else :label="t('common.cancel')" size="large" :disabled="!canClose" :raised="false" text
+        severity="secondary" @click="onClose" /> -->
     </div>
   </Dialog>
 </template>

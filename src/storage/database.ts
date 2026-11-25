@@ -104,6 +104,19 @@ async function ensureOfflineAssetScanProgressColumns(): Promise<void> {
   )
 }
 
+async function ensureOfflinePositionCountColumns(): Promise<void> {
+  await ensureColumn(
+    'offline_positions',
+    'reality_count',
+    `ALTER TABLE offline_positions ADD COLUMN reality_count REAL`,
+  )
+  await ensureColumn(
+    'offline_positions',
+    'scan_count',
+    `ALTER TABLE offline_positions ADD COLUMN scan_count REAL`,
+  )
+}
+
 async function migrateSchema(fromVersion: number): Promise<void> {
   if (fromVersion < 2) {
     await ensureColumn(
@@ -132,6 +145,15 @@ async function migrateSchema(fromVersion: number): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_offline_scan_commands_synced ON offline_scan_commands(synced, created_at)`,
     )
   }
+  if (fromVersion < 7) {
+    await ensureOfflinePositionCountColumns()
+  }
+  if (fromVersion < 8) {
+    await execute(
+      `CREATE INDEX IF NOT EXISTS idx_offline_asset_scans_order_pos
+       ON offline_asset_scans(cycle_id, factory_id, warehouse_id, order_code)`,
+    )
+  }
 }
 
 async function applySchema(): Promise<void> {
@@ -140,6 +162,7 @@ async function applySchema(): Promise<void> {
   }
   // Always ensure progress columns exist (handles DBs already at SCHEMA_VERSION).
   await ensureOfflineAssetScanProgressColumns()
+  await ensureOfflinePositionCountColumns()
   const rows = await query<{ version: number }>('SELECT version FROM schema_meta LIMIT 1')
   if (!rows.length) {
     await migrateSchema(0)

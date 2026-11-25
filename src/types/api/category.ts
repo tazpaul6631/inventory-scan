@@ -100,9 +100,15 @@ export interface ViewArea {
   id: number
   sno?: number
   factoryId?: number
+  tenantId?: string | null
   warehouseId?: number
+  warehouseName?: string | null
   wposition?: string | null
   remark?: string | null
+  cycleId?: number | null
+  scanDate?: string | null
+  realityCount?: number | null
+  scanCount?: number | null
   lastSyncAt?: string | null
 }
 

@@ -8,6 +8,8 @@ const config: CapacitorConfig = {
     // HTTP page so the WebView can call an HTTP API (https://localhost + http://API = mixed content).
     androidScheme: 'http',
     cleartext: true,
+    // Do not allow navigating the WebView to the public website (use system browser instead).
+    allowNavigation: [],
   },
   plugins: {
     SplashScreen: {

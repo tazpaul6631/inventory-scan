@@ -203,6 +203,7 @@ async function persistLoginCatalog() {
 }
 
 async function onOfflineDownloadFinished() {
+  await auth.markOfflineCatalogReady()
   toast.add({
     severity: 'success',
     summary: t('offlineDownload.success'),
@@ -210,6 +211,10 @@ async function onOfflineDownloadFinished() {
     closable: false,
   })
   await router.replace(redirectAfterLogin())
+}
+
+async function onOfflineDownloadAborted() {
+  await auth.logout()
 }
 
 async function continueAfterAuthSuccess(factoryValue: string, cycleValue: string) {
@@ -387,7 +392,8 @@ const submit = handleSubmit(async (values) => {
       <p class="m-0 text-center text-xs text-muted">{{ t('footer.copyright') }}</p>
     </form>
 
-    <OfflineDownloadDialog v-if="isMobileLogin" @finished="onOfflineDownloadFinished" />
+    <OfflineDownloadDialog v-if="isMobileLogin" @finished="onOfflineDownloadFinished"
+      @aborted="onOfflineDownloadAborted" />
 
     <Teleport to="body">
       <div v-if="liveScanOpen" class="live-scan-overlay" role="dialog" aria-modal="true"

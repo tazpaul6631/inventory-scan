@@ -5,6 +5,10 @@ import type {
   AssetQueryResult,
   AssetQueryResultRequest,
   CreateAiScanResultRequest,
+  CreateAiScanResultWithImage,
+  CreateScanFailLogRequest,
+  SyncAiScanResultItem,
+  SyncScanFailLogItem,
 } from '@/types/api'
 
 // export async function queryAssetInfoViewResult(params: AssetQueryResultRequest) {
@@ -66,20 +70,104 @@ function toAiScanCommandBody(params: CreateAiScanResultRequest): CreateAiScanRes
   }
 }
 
-export async function createAiScanResult(params: CreateAiScanResultRequest) {
-  const { data } = await http.post<ApiResponse<boolean>>(
-    '/asset/aisrc/command',
-    toAiScanCommandBody(params),
-  )
+function appendScanCommandForm(form: FormData, params: CreateAiScanResultRequest) {
+  form.append('FactoryId', String(params.factoryId))
+  if (params.tenantId != null && params.tenantId !== '') {
+    form.append('TenantId', params.tenantId)
+  }
+  form.append('WarehouseId', String(params.warehouseId))
+  form.append('WPositionId', String(params.wPositionId))
+  if (params.wPosition != null) form.append('WPosition', params.wPosition)
+  if (params.vatNo != null) form.append('VatNo', params.vatNo)
+  if (params.orderCode != null) form.append('OrderCode', params.orderCode)
+  if (params.materialName != null) form.append('MaterialName', params.materialName)
+  form.append('Count', String(params.count))
+  form.append('CycleId', String(params.cycleId))
+  if (params.scanResult != null) form.append('ScanResult', params.scanResult)
+  form.append('ScanCount', String(params.scanCount))
+  if (params.scanAt != null) form.append('ScanAt', params.scanAt)
+  form.append('ScanBy', params.scanBy)
+}
+
+/** Online scan command — always multipart (Swagger IFormFile); Image only when present. */
+export async function createAiScanResult(params: CreateAiScanResultWithImage) {
+  const body = toAiScanCommandBody(params)
+  const form = new FormData()
+  appendScanCommandForm(form, body)
+  if (params.image) {
+    form.append('Image', params.image, 'evidence.jpg')
+  }
+  const { data } = await http.post<ApiResponse<boolean>>('/asset/aisrc/command', form)
   return data
 }
 
-/** Batch upload pending offline scan commands. */
-export async function syncAiScanResultsBatch(items: CreateAiScanResultRequest[]) {
-  const { data } = await http.post<ApiResponse<unknown>>(
-    '/sync/sc/syncaisr',
-    items.map(toAiScanCommandBody),
-  )
+function appendIndexed(
+  form: FormData,
+  index: number,
+  field: string,
+  value: string | Blob,
+  fileName?: string,
+) {
+  const key = `dto[${index}].${field}`
+  if (value instanceof Blob) {
+    form.append(key, value, fileName ?? 'evidence.jpg')
+  } else {
+    form.append(key, value)
+  }
+}
+
+/** Batch sync scan commands — multipart IFormFile dto[] like online. */
+export async function syncAiScanResultsBatch(items: SyncAiScanResultItem[]) {
+  const form = new FormData()
+  items.forEach((item, index) => {
+    const base = toAiScanCommandBody(item)
+    appendIndexed(form, index, 'FactoryId', String(base.factoryId))
+    if (base.tenantId != null && base.tenantId !== '') {
+      appendIndexed(form, index, 'TenantId', base.tenantId)
+    }
+    appendIndexed(form, index, 'WarehouseId', String(base.warehouseId))
+    appendIndexed(form, index, 'WPositionId', String(base.wPositionId))
+    if (base.wPosition != null) appendIndexed(form, index, 'WPosition', base.wPosition)
+    if (base.vatNo != null) appendIndexed(form, index, 'VatNo', base.vatNo)
+    if (base.orderCode != null) appendIndexed(form, index, 'OrderCode', base.orderCode)
+    if (base.materialName != null) appendIndexed(form, index, 'MaterialName', base.materialName)
+    appendIndexed(form, index, 'Count', String(base.count))
+    appendIndexed(form, index, 'CycleId', String(base.cycleId))
+    if (base.scanResult != null) appendIndexed(form, index, 'ScanResult', base.scanResult)
+    appendIndexed(form, index, 'ScanCount', String(base.scanCount))
+    if (base.scanAt != null) appendIndexed(form, index, 'ScanAt', base.scanAt)
+    appendIndexed(form, index, 'ScanBy', base.scanBy)
+    if (item.image) appendIndexed(form, index, 'Image', item.image, 'evidence.jpg')
+  })
+  const { data } = await http.post<ApiResponse<unknown>>('/sync/sc/syncaisr', form)
+  return data
+}
+
+/** Online NotFound evidence — POST /applog/aisflc/create (multipart). */
+export async function createScanFailLog(params: CreateScanFailLogRequest) {
+  const form = new FormData()
+  form.append('VatNo', params.vatNo)
+  form.append('CycleId', String(params.cycleId))
+  form.append('CreatedAt', params.createdAt)
+  form.append('CreatedBy', params.createdBy)
+  if (params.image) {
+    form.append('Image', params.image, 'evidence.jpg')
+  }
+  const { data } = await http.post<ApiResponse<boolean>>('/applog/aisflc/create', form)
+  return data
+}
+
+/** Batch sync NotFound / fail logs — multipart IFormFile dto[] like online. */
+export async function syncScanFailLogsBatch(items: SyncScanFailLogItem[]) {
+  const form = new FormData()
+  items.forEach((item, index) => {
+    appendIndexed(form, index, 'VatNo', item.vatNo)
+    appendIndexed(form, index, 'CycleId', String(item.cycleId))
+    appendIndexed(form, index, 'CreatedAt', item.createdAt)
+    appendIndexed(form, index, 'CreatedBy', item.createdBy)
+    if (item.image) appendIndexed(form, index, 'Image', item.image, 'evidence.jpg')
+  })
+  const { data } = await http.post<ApiResponse<unknown>>('/sync/sc/syncaisfl', form)
   return data
 }
 
