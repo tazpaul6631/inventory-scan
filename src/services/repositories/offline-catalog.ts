@@ -390,6 +390,58 @@ export async function listOfflinePositionsByOrganizationOrderCode(params: {
     .filter((row): row is { id: number; wposition: string } => row != null)
 }
 
+/** Distinct orgs whose name or code matches an asset order_code at this position. */
+export async function listOfflineOrganizationsByPosition(params: {
+  cycleId: number
+  factoryId: number
+  warehouseId: number
+  wPositionId: number
+}): Promise<ViewOrganization[]> {
+  if (!Number.isFinite(params.wPositionId)) return []
+  const rows = await query<OfflineOrganizationRow>(
+    `SELECT DISTINCT o.id, o.code, o.name, o.factory_id, o.status
+     FROM offline_organizations o
+     WHERE o.factory_id = ?
+       AND (
+         (
+           o.name IS NOT NULL AND TRIM(o.name) != ''
+           AND o.name IN (
+             SELECT order_code FROM offline_asset_scans
+             WHERE cycle_id = ? AND factory_id = ? AND warehouse_id = ? AND w_position_id = ?
+               AND order_code IS NOT NULL AND TRIM(order_code) != ''
+           )
+         )
+         OR (
+           o.code IS NOT NULL AND TRIM(o.code) != ''
+           AND o.code IN (
+             SELECT order_code FROM offline_asset_scans
+             WHERE cycle_id = ? AND factory_id = ? AND warehouse_id = ? AND w_position_id = ?
+               AND order_code IS NOT NULL AND TRIM(order_code) != ''
+           )
+         )
+       )
+     ORDER BY o.name COLLATE NOCASE, o.code COLLATE NOCASE`,
+    [
+      params.factoryId,
+      params.cycleId,
+      params.factoryId,
+      params.warehouseId,
+      params.wPositionId,
+      params.cycleId,
+      params.factoryId,
+      params.warehouseId,
+      params.wPositionId,
+    ],
+  )
+  return rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    factoryId: row.factory_id ?? params.factoryId,
+    status: row.status ?? undefined,
+  }))
+}
+
 export async function listOfflineOrganizations(factoryId: number): Promise<ViewOrganization[]> {
   const rows = await query<OfflineOrganizationRow>(
     `SELECT id, code, name, factory_id, status

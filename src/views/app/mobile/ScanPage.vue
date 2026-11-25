@@ -49,6 +49,7 @@ import {
   getOfflineWarehouseName,
   listOfflineAssetScans,
   listOfflineOrganizations,
+  listOfflineOrganizationsByPosition,
   listOfflinePositions,
   listOfflinePositionsByOrganizationOrderCode,
   countOfflineUnknownScanCodes,
@@ -455,6 +456,10 @@ watch(draftOrganization, () => {
   void loadPositions(draftWarehouse.value)
 })
 
+watch(draftPosition, () => {
+  void loadOrganizations()
+})
+
 function scrollTableToTop() {
   if (tableScrollEl) tableScrollEl.scrollTop = 0
 }
@@ -733,7 +738,22 @@ async function loadOrganizations() {
   }
   loadingOrganizations.value = true
   try {
-    const rows = await listOfflineOrganizations(fid)
+    const positionId = Number(draftPosition.value)
+    const warehouseId = Number(draftWarehouse.value)
+    const cycleId = session.value?.cycleId
+    const rows =
+      draftPosition.value &&
+      draftWarehouse.value &&
+      cycleId !== undefined &&
+      Number.isFinite(positionId) &&
+      Number.isFinite(warehouseId)
+        ? await listOfflineOrganizationsByPosition({
+            cycleId,
+            factoryId: fid,
+            warehouseId,
+            wPositionId: positionId,
+          })
+        : await listOfflineOrganizations(fid)
     organizationOptions.value = rows
       .map((item) => {
         const code = item.code?.trim() || ''
@@ -741,6 +761,12 @@ async function loadOrganizations() {
         return { label: name || code, value: name }
       })
       .filter((item) => item.value)
+    if (
+      draftOrganization.value &&
+      !organizationOptions.value.some((item) => item.value === draftOrganization.value)
+    ) {
+      draftOrganization.value = null
+    }
   } catch (err) {
     organizationOptions.value = []
     toast.add({
