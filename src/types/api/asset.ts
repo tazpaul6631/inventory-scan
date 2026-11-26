@@ -10,6 +10,12 @@ export interface AssetQueryResultRequest {
   orderCode?: string | null
   name?: string | null
   isComplete?: boolean
+  /** User id who scanned. */
+  scanBy?: string | null
+  /** Scan time range start (local wall-clock `YYYY-MM-DDTHH:mm:ss`). */
+  scanAtFrom?: string | null
+  /** Scan time range end (local wall-clock `YYYY-MM-DDTHH:mm:ss`). */
+  scanAtTo?: string | null
 }
 
 export interface ViewAssetInfo {

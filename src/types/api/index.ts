@@ -12,6 +12,7 @@ export type {
   ViewPlatformPermission,
   ViewValidateUser,
   ViewUser,
+  ViewUserBase,
 } from './user'
 export type { ViewRole } from './role'
 export type {
@@ -19,6 +20,7 @@ export type {
   FactoryQueryResultRequest,
   FactoryQueryResult,
   ViewCycle,
+  ViewCycleBase,
   CycleQueryResultRequest,
   CycleQueryResult,
   CreateCycleRequest,

@@ -1582,6 +1582,57 @@ body {
   flex-shrink: 0;
 }
 
+/* Skeleton rows while a web table loads (placeholder rows, bars drawn in each cell). */
+.table-skeleton .p-datatable-tbody>tr>td {
+  pointer-events: none;
+}
+
+.table-skeleton .p-datatable-tbody>tr>td::after {
+  content: '';
+  display: block;
+  width: 70%;
+  max-width: 14rem;
+  height: 1rem;
+  border-radius: 0.375rem;
+  background: linear-gradient(90deg,
+      var(--p-surface-200, #e4e4e7) 25%,
+      var(--p-surface-100, #f4f4f5) 37%,
+      var(--p-surface-200, #e4e4e7) 63%);
+  background-size: 400% 100%;
+  animation: table-skeleton-shimmer 1.4s ease infinite;
+}
+
+.table-skeleton .p-datatable-tbody>tr:hover>td {
+  background: inherit;
+}
+
+@keyframes table-skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* Asset info tables: columns size to their content (horizontal scroll when wide). */
+.asset-info-page .table-wrap-fill .p-datatable-table,
+.asset-scan-results-page .table-wrap-fill .p-datatable-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.asset-info-page .table-wrap-fill .p-datatable-thead>tr>th,
+.asset-info-page .table-wrap-fill .p-datatable-tbody>tr>td,
+.asset-scan-results-page .table-wrap-fill .p-datatable-thead>tr>th,
+.asset-scan-results-page .table-wrap-fill .p-datatable-tbody>tr>td {
+  width: auto;
+  max-width: none;
+  white-space: nowrap;
+}
+
 .table-wrap-fill .p-datatable-table-container:has(.table-empty) {
   display: flex;
   flex-direction: column;

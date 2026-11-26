@@ -67,6 +67,12 @@ export interface ViewUser {
   updatedBy?: string
 }
 
+export interface ViewUserBase {
+  id: string
+  code?: string | null
+  name?: string | null
+}
+
 export interface UserQueryResult {
   items?: ViewUser[] | null
   totalCount: number

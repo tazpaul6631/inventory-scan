@@ -14,6 +14,7 @@ import type {
   UpdateCycleRequest,
   ViewArea,
   ViewCycle,
+  ViewCycleBase,
   ViewFactory,
   ViewOrganization,
   ViewWarehouse,
@@ -41,6 +42,11 @@ export async function syncFactoriesFromApi(params: { createdBy: string }) {
 
 export async function queryCycleResult() {
   const { data } = await http.get<ApiResponse<ViewCycle>>('/category/cc/getlastest')
+  return data
+}
+
+export async function getCycleBaseList() {
+  const { data } = await http.post<ApiResponse<ViewCycleBase[]>>('/category/cc/getbaselist', {})
   return data
 }
 

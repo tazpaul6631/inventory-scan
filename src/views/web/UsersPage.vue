@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { skeletonRows } from '@/composables/useTableSkeleton'
 import Button from '@/components/ui/AppButton.vue'
 import InputText from '@/components/ui/AppInputText.vue'
 import FloatLabel from '@/components/ui/AppFloatLabel.vue'
@@ -120,7 +121,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="users-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
+  <div class="users-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
     <div class="flex shrink-0 flex-wrap items-center gap-2">
       <FloatLabel class="min-w-48 flex-1">
         <InputText id="user-search" v-model="keyword" class="w-full" @keydown.enter="search" />
@@ -131,7 +132,7 @@ onMounted(() => {
     </div>
 
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
         :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
@@ -147,19 +148,19 @@ onMounted(() => {
         <Column field="name" :header="t('user.name')" />
         <Column :header="t('user.allowWeb')">
           <template #body="{ data }">
-            <Tag :value="data.allowWeb ? t('common.yes') : t('common.no')"
+            <Tag v-if="!loading" :value="data.allowWeb ? t('common.yes') : t('common.no')"
               :severity="data.allowWeb ? 'success' : 'secondary'" />
           </template>
         </Column>
         <Column :header="t('user.active')">
           <template #body="{ data }">
-            <Tag :value="data.isActive ? t('common.yes') : t('common.no')"
+            <Tag v-if="!loading" :value="data.isActive ? t('common.yes') : t('common.no')"
               :severity="data.isActive ? 'success' : 'secondary'" />
           </template>
         </Column>
         <Column :header="t('common.actions')">
           <template #body="{ data }">
-            <div class="flex flex-nowrap items-center gap-1">
+            <div v-if="!loading" class="flex flex-nowrap items-center gap-1">
               <Button icon="pi pi-eye" size="large" :raised="false" text rounded severity="secondary"
                 :aria-label="t('user.viewTitle')" @click="openView(data)" />
               <Button icon="pi pi-pencil" size="large" :raised="false" text rounded severity="secondary"

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { skeletonRows } from '@/composables/useTableSkeleton'
 import { queryAssetInfoResult } from '@/services/api/asset'
 import { readApiFailure } from '@/services/api/error'
 import type { ViewAssetInfo } from '@/types/api'
@@ -59,10 +60,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="asset-info-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
+  <div class="asset-info-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover
+        lazy paginator scrollable scroll-height="flex" :rows="pageSize" :total-records="total" :first="page * pageSize"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
@@ -76,12 +77,14 @@ onMounted(() => {
         <Column field="vatNo" :header="t('assetInfo.vatNo')" />
         <Column field="materialCode" :header="t('assetInfo.materialCode')" />
         <Column field="materialName" :header="t('assetInfo.materialName')" />
-        <Column field="count" :header="t('assetInfo.count')" class="w-12" />
+        <Column field="materialEnName" :header="t('assetInfo.materialEnName')" />
         <Column field="wPosition" :header="t('assetInfo.wPosition')" />
         <Column field="warehouseName" :header="t('assetInfo.warehouseName')" />
         <Column field="materialUnitNo" :header="t('assetInfo.materialUnitNo')" />
         <Column field="orderCode" :header="t('assetInfo.orderCode')" />
-        <Column field="rollNo" :header="t('assetInfo.rollNo')" class="w-auto" />
+        <Column field="responsibleUnit" :header="t('assetInfo.responsibleUnit')" />
+        <Column field="count" :header="t('assetInfo.count')" />
+        <Column field="rollNo" :header="t('assetInfo.rollNo')" />
       </DataTable>
     </div>
   </div>

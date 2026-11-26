@@ -9,6 +9,7 @@ import type {
   UserValidateRequest,
   UpdateUserRequest,
   ViewUser,
+  ViewUserBase,
   ViewValidateUser,
 } from '@/types/api'
 
@@ -19,6 +20,11 @@ export async function userValidate(params: UserValidateRequest) {
 
 export async function queryUserResult(params?: UserQueryResultRequest) {
   const { data } = await http.post<ApiResponse<UserQueryResult>>('/user/uc/queryresult', params ?? {})
+  return data
+}
+
+export async function getUserBaseList() {
+  const { data } = await http.post<ApiResponse<ViewUserBase[]>>('/user/uc/getbaselist', {})
   return data
 }
 

@@ -28,7 +28,7 @@ export async function queryAssetInfoResult(params?: AssetQueryResultRequest) {
 export async function queryAssetInfoScanResult(params?: AssetQueryResultRequest) {
   const { data } = await http.post<ApiResponse<AssetInfoScanResultQueryResult>>(
     '/asset/aisrvc/queryresult',
-    { isComplete: true, ...params },
+    { ...params },
   )
   return data
 }

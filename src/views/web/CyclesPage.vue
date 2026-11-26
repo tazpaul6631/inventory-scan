@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast'
 import dayjs from 'dayjs'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { skeletonRows } from '@/composables/useTableSkeleton'
 import Button from '@/components/ui/AppButton.vue'
 import CycleFormDialog from '@/components/cycle/CycleFormDialog.vue'
 import CycleViewDialog from '@/components/cycle/CycleViewDialog.vue'
@@ -143,14 +144,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="cycles-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
+  <div class="cycles-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
     <div class="flex shrink-0 flex-wrap items-center gap-2">
       <Button icon="pi pi-sync" :label="t('cycle.sync')" size="large" :disabled="rows.length === 0"
         @click="syncAllInCycles" />
       <Button icon="pi pi-plus" :label="t('cycle.create')" size="large" @click="openCreate" />
     </div>
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
         :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
@@ -181,7 +182,7 @@ onMounted(() => {
         </Column>
         <Column :header="t('common.actions')">
           <template #body="{ data }">
-            <div class="flex flex-nowrap items-center gap-1">
+            <div v-if="!loading" class="flex flex-nowrap items-center gap-1">
               <Button icon="pi pi-eye" size="large" :raised="false" text rounded severity="secondary"
                 :aria-label="t('cycle.viewTitle')" @click="openView(data)" />
               <Button icon="pi pi-pencil" size="large" :raised="false" text rounded severity="secondary"

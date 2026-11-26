@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast'
 import dayjs from 'dayjs'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { skeletonRows } from '@/composables/useTableSkeleton'
 import { queryOrganizationResult } from '@/services/api/category'
 import { readApiFailure } from '@/services/api/error'
 import type { ViewOrganization } from '@/types/api'
@@ -66,9 +67,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="organizations-page page-fill gap-3 overflow-hidden pt-2" :style="{ paddingBottom: 'var(--safe-bottom)' }">
+  <div class="organizations-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="rows" :loading="loading" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
         :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"

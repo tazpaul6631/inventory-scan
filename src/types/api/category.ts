@@ -39,6 +39,13 @@ export interface ViewCycle {
   updatedBy?: string | null
 }
 
+/** Lightweight cycle option from /category/cc/getbaselist. */
+export interface ViewCycleBase {
+  id: number
+  code?: string | null
+  name?: string | null
+}
+
 export interface CycleQueryResultRequest {
   page?: number
   pageSize?: number
