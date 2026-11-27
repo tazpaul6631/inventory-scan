@@ -44,7 +44,7 @@ async function requestCameraPermission(ml: MlKit): Promise<void> {
  * Google Code Scanner only — no module install wait.
  * If unsupported / module missing, fail immediately so UI opens html5.
  */
-export async function scanBarcodeNative(): Promise<ScanResult> {
+async function scanBarcodeNative(): Promise<ScanResult> {
   if (skipMlKit) throw new Error(trError('useLiveScan'))
 
   const ml = await loadMlKit()
@@ -164,6 +164,3 @@ export async function stopLiveScan(): Promise<void> {
   html5 = null
 }
 
-export function canNativeScan(): boolean {
-  return isNative()
-}

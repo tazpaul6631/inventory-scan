@@ -45,5 +45,3 @@ export function createChangePasswordSchema() {
     })
 }
 
-export type UserFormValues = z.infer<ReturnType<typeof createUserFormSchema>>
-export type ChangePasswordFormValues = z.infer<ReturnType<typeof createChangePasswordSchema>>

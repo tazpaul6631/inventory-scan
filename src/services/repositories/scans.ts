@@ -58,23 +58,6 @@ export async function listScanLogs(limit?: number): Promise<ScanLog[]> {
   return rows.map(mapScan)
 }
 
-export async function countScans(): Promise<number> {
-  const rows = await query<{ c: number }>('SELECT COUNT(*) as c FROM scan_logs')
-  return Number(rows[0]?.c ?? 0)
-}
 
-export async function deleteScanLog(id: string): Promise<void> {
-  await run(`DELETE FROM scan_logs WHERE id = ?`, [id])
-}
 
-export async function deleteAllScanLogs(): Promise<void> {
-  await run(`DELETE FROM scan_logs`)
-}
 
-export async function existsScanLog(value: string, direction: ScanDirection): Promise<boolean> {
-  const rows = await query<{ c: number }>(
-    `SELECT COUNT(*) as c FROM scan_logs WHERE value = ? AND direction = ? LIMIT 1`,
-    [value, direction],
-  )
-  return Number(rows[0]?.c ?? 0) > 0
-}

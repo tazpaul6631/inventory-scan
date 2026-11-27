@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { i18n } from '@/i18n'
 
-export type LoginMode = 'mobile' | 'web'
+type LoginMode = 'mobile' | 'web'
 
 function staffIdField() {
   const t = i18n.global.t
@@ -26,4 +26,3 @@ export function createLoginSchema(mode: LoginMode) {
   })
 }
 
-export type LoginFormValues = z.infer<ReturnType<typeof createLoginSchema>>

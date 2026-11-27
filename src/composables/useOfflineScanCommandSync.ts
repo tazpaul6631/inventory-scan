@@ -21,11 +21,11 @@ import { EVIDENCE_MEDIA_KIND } from '@/services/evidence-photo'
 import { useNetworkStore } from '@/stores/network'
 import { i18n } from '@/i18n'
 
-export type ScanCommandSyncPhase = 'idle' | 'running' | 'finished' | 'error'
-export type SyncStepKey = 'scan' | 'scanFail'
-export type SyncStepState = 'pending' | 'loading' | 'done' | 'error' | 'skipped'
+type ScanCommandSyncPhase = 'idle' | 'running' | 'finished' | 'error'
+type SyncStepKey = 'scan' | 'scanFail'
+type SyncStepState = 'pending' | 'loading' | 'done' | 'error' | 'skipped'
 
-export interface SyncStepProgress {
+interface SyncStepProgress {
   key: SyncStepKey
   label: string
   state: SyncStepState

@@ -3,7 +3,7 @@ import type {
   PendingScanCommand,
 } from '@/services/repositories/offline-catalog'
 
-export type ReconcilePendingScanResult = { kind: 'upload'; payload: OfflineScanCommandPayload }
+type ReconcilePendingScanResult = { kind: 'upload'; payload: OfflineScanCommandPayload }
 
 /**
  * Before sync upload: trust the queued payload (Success / Exist / WrongWposition as scanned).

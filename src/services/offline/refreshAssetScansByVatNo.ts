@@ -4,7 +4,7 @@ import { mergeAssetScanPageFromServer } from '@/services/repositories/offline-ca
 
 const VATNO_REFRESH_PAGE_SIZE = 100
 /** Soft cap so a bad network never blocks the scanner. */
-export const VATNO_REFRESH_TIMEOUT_MS = 3000
+const VATNO_REFRESH_TIMEOUT_MS = 3000
 
 const inFlight = new Map<string, Promise<boolean>>()
 

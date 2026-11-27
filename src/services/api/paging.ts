@@ -1,4 +1,4 @@
-export interface PagedResultLike<T> {
+interface PagedResultLike<T> {
   items?: T[] | null
   totalCount: number
   page: number
@@ -8,7 +8,7 @@ export interface PagedResultLike<T> {
   hasPreviousPage?: boolean
 }
 
-export interface PageFetchProgress {
+interface PageFetchProgress {
   page: number
   pageSize: number
   totalCount: number

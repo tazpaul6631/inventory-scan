@@ -60,11 +60,6 @@ const router = createRouter({
           children: [
             { path: '', name: 'app-mobile', redirect: { name: 'mobile-scan' } },
             { path: 'scan', name: 'mobile-scan', component: () => import('@/views/app/mobile/ScanPage.vue') },
-            {
-              path: 'history',
-              name: 'mobile-history',
-              component: () => import('@/views/app/mobile/HistoryPage.vue'),
-            },
           ],
         },
       ],

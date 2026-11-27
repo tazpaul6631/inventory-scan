@@ -112,13 +112,6 @@ export async function queryPositionResult(params?: PositionQueryResultRequest) {
   return data
 }
 
-export async function baseQueryPositionResult(params?: PositionQueryResultRequest) {
-  const { data } = await http.post<ApiResponse<PositionQueryResult>>(
-    '/category/pc/basequeryresult',
-    params ?? {},
-  )
-  return data
-}
 
 export async function syncPositionsFromApi(params: { createdBy: string }) {
   const { data } = await http.post<ApiResponse<boolean>>('/category/pc/syncfromapi', params)

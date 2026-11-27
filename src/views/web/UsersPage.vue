@@ -127,13 +127,14 @@ onMounted(() => {
         <InputText id="user-search" v-model="keyword" class="w-full" @keydown.enter="search" />
         <label for="user-search">{{ t('user.searchPlaceholder') }}</label>
       </FloatLabel>
-      <Button icon="pi pi-search" :label="t('common.search')" size="large" :loading="loading" @click="search" />
+      <Button icon="pi pi-search" outlined size="large" :loading="loading" @click="search" />
       <Button icon="pi pi-plus" :label="t('user.add')" size="large" @click="openCreate" />
     </div>
 
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover
+        lazy paginator scrollable scroll-height="flex" :rows="pageSize" :total-records="total" :first="page * pageSize"
+        data-key="id"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         :rowsPerPageOptions="[50, 100, 200]" @page="onPage">

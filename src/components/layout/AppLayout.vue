@@ -115,19 +115,9 @@ watch(appShell, () => {
   if (!pathMatchesShell(route.path)) void router.replace(homePathForShell())
 })
 
+// Mobile shell has no sidebar: its only page is the scan page (title is set below).
 const navGroups = computed(() => {
-  if (appShell.value) {
-    return [
-      {
-        key: 'mobile',
-        label: t('nav.app'),
-        items: [
-          { to: '/app/mobile/scan', icon: 'pi pi-qrcode', label: t('nav.mobileScan') },
-          { to: '/app/mobile/history', icon: 'pi pi-list', label: t('nav.mobileHistory') },
-        ],
-      },
-    ]
-  }
+  if (appShell.value) return []
   return [
     {
       key: 'web',
@@ -148,9 +138,12 @@ const navGroups = computed(() => {
 
 const homeTo = computed(() => (appShell.value ? '/app/mobile/scan' : '/web/users'))
 
-const title = computed(() =>
-  navGroups.value.flatMap((group) => group.items).find((link) => link.to === route.path)?.label || t('app.name'),
-)
+const title = computed(() => {
+  if (appShell.value) return t('nav.mobileScan')
+  return (
+    navGroups.value.flatMap((group) => group.items).find((link) => link.to === route.path)?.label || t('app.name')
+  )
+})
 
 const factoryLabel = computed(
   () => session.value?.abbr?.trim() || session.value?.factory?.trim() || '',
@@ -201,11 +194,12 @@ watch(
 
 <template>
   <div class="shell-wrap">
-    <div class="sidebar-backdrop" :class="{ show: showBackdrop }" :aria-hidden="!showBackdrop" @click="onBackdrop" />
+    <div v-if="!appShell" class="sidebar-backdrop" :class="{ show: showBackdrop }" :aria-hidden="!showBackdrop"
+      @click="onBackdrop" />
     <div class="shell" :class="{ drawer: isDrawer, collapsed: webIconRail, 'sidebar-hover': webIconRail && hoverOpen }">
       <div class="shell-body">
         <div v-if="webIconRail" class="sidebar-rail-spacer" aria-hidden="true" />
-        <aside class="sidebar" :class="{ open, hover: webIconRail && hoverOpen }" @mouseenter="onSidebarEnter"
+        <aside v-if="!appShell" class="sidebar" :class="{ open, hover: webIconRail && hoverOpen }" @mouseenter="onSidebarEnter"
           @mouseleave="onSidebarLeave" @click.stop>
           <RouterLink :to="homeTo" class="brand brand-btn" :title="hoverOpen ? undefined : t('app.name')"
             @click="closeSidebar">

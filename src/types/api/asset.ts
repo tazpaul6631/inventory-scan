@@ -10,8 +10,11 @@ export interface AssetQueryResultRequest {
   orderCode?: string | null
   name?: string | null
   isComplete?: boolean
+  responsibleUnit?: string | null
   /** User id who scanned. */
   scanBy?: string | null
+  /** Scan outcome code: Success, Exist, or WrongWposition. */
+  scanResult?: string | null
   /** Scan time range start (local wall-clock `YYYY-MM-DDTHH:mm:ss`). */
   scanAtFrom?: string | null
   /** Scan time range end (local wall-clock `YYYY-MM-DDTHH:mm:ss`). */

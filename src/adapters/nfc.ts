@@ -1,4 +1,4 @@
-import { CapacitorNfc, type NfcStatus } from '@capgo/capacitor-nfc'
+import { CapacitorNfc } from '@capgo/capacitor-nfc'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { hasWebNfc, isNative } from '@/adapters/platform'
 import type { ScanResult } from '@/types'
@@ -63,15 +63,4 @@ export async function stopNfcScan(): Promise<void> {
   webAbort = null
 }
 
-export async function nfcStatus(): Promise<NfcStatus> {
-  if (isNative()) {
-    const status = await CapacitorNfc.getStatus()
-    return status.status
-  }
-  return hasWebNfc() ? 'NFC_OK' : 'NO_NFC'
-}
 
-export async function openNfcSettings(): Promise<void> {
-  if (!isNative()) return
-  await CapacitorNfc.showSettings()
-}

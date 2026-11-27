@@ -13,6 +13,7 @@ import type {
   ViewWarehouse,
 } from '@/types/api'
 import { createId, now } from '@/utils/id'
+import { formatVietnamDateTime } from '@/utils/localDateTime'
 
 interface OfflineWarehouseRow {
   id: number
@@ -248,26 +249,6 @@ export async function replaceOrganizations(
   })
 }
 
-export async function listOfflineFactories(): Promise<ViewFactory[]> {
-  const rows = await query<{
-    id: number
-    name: string | null
-    abbr: string | null
-    tenant_id: string | null
-    sno: number | null
-  }>(
-    `SELECT id, name, abbr, tenant_id, sno
-     FROM offline_factories
-     ORDER BY name COLLATE NOCASE`,
-  )
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    abbr: row.abbr,
-    tenantId: row.tenant_id,
-    sno: row.sno ?? undefined,
-  }))
-}
 
 export async function getOfflineFactoryName(factoryId: number): Promise<string> {
   const rows = await query<{ name: string | null; abbr: string | null }>(
@@ -347,114 +328,7 @@ export async function listOfflinePositions(
   }))
 }
 
-/** Distinct scan positions for an org via order_code (name or org.code), scoped to cycle/warehouse. */
-export async function listOfflinePositionsByOrganizationOrderCode(params: {
-  cycleId: number
-  factoryId: number
-  warehouseId: number
-  organizationName: string
-}): Promise<Array<{ id: number; wposition: string; realityCount: number | null; scanCount: number | null }>> {
-  const name = params.organizationName.trim()
-  if (!name) return []
-  const rows = await query<{
-    w_position_id: number | null
-    w_position: string | null
-    reality_count: number | null
-    scan_count: number | null
-  }>(
-    `SELECT DISTINCT a.w_position_id, a.w_position, p.reality_count, p.scan_count
-     FROM offline_asset_scans a
-     LEFT JOIN offline_positions p ON p.id = a.w_position_id
-     WHERE a.cycle_id = ?
-       AND a.factory_id = ?
-       AND a.warehouse_id = ?
-       AND a.w_position_id IS NOT NULL
-       AND (
-         a.order_code = ?
-         OR a.order_code IN (
-           SELECT code FROM offline_organizations
-           WHERE factory_id = ? AND name = ? AND code IS NOT NULL AND TRIM(code) != ''
-         )
-       )
-     ORDER BY a.w_position COLLATE NOCASE`,
-    [
-      params.cycleId,
-      params.factoryId,
-      params.warehouseId,
-      name,
-      params.factoryId,
-      name,
-    ],
-  )
-  return rows
-    .map((row) => {
-      const id = row.w_position_id
-      const wposition = row.w_position?.trim() || ''
-      if (id == null || !Number.isFinite(id) || !wposition) return null
-      return {
-        id,
-        wposition,
-        realityCount: row.reality_count,
-        scanCount: row.scan_count,
-      }
-    })
-    .filter(
-      (row): row is { id: number; wposition: string; realityCount: number | null; scanCount: number | null } =>
-        row != null,
-    )
-}
 
-/** Distinct orgs whose name or code matches an asset order_code at this position. */
-export async function listOfflineOrganizationsByPosition(params: {
-  cycleId: number
-  factoryId: number
-  warehouseId: number
-  wPositionId: number
-}): Promise<ViewOrganization[]> {
-  if (!Number.isFinite(params.wPositionId)) return []
-  const rows = await query<OfflineOrganizationRow>(
-    `SELECT DISTINCT o.id, o.code, o.name, o.factory_id, o.status
-     FROM offline_organizations o
-     WHERE o.factory_id = ?
-       AND (
-         (
-           o.name IS NOT NULL AND TRIM(o.name) != ''
-           AND o.name IN (
-             SELECT order_code FROM offline_asset_scans
-             WHERE cycle_id = ? AND factory_id = ? AND warehouse_id = ? AND w_position_id = ?
-               AND order_code IS NOT NULL AND TRIM(order_code) != ''
-           )
-         )
-         OR (
-           o.code IS NOT NULL AND TRIM(o.code) != ''
-           AND o.code IN (
-             SELECT order_code FROM offline_asset_scans
-             WHERE cycle_id = ? AND factory_id = ? AND warehouse_id = ? AND w_position_id = ?
-               AND order_code IS NOT NULL AND TRIM(order_code) != ''
-           )
-         )
-       )
-     ORDER BY o.name COLLATE NOCASE, o.code COLLATE NOCASE`,
-    [
-      params.factoryId,
-      params.cycleId,
-      params.factoryId,
-      params.warehouseId,
-      params.wPositionId,
-      params.cycleId,
-      params.factoryId,
-      params.warehouseId,
-      params.wPositionId,
-    ],
-  )
-  return rows.map((row) => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    factoryId: row.factory_id ?? params.factoryId,
-    status: row.status ?? undefined,
-  }))
-}
 
 export async function listOfflineOrganizations(factoryId: number): Promise<ViewOrganization[]> {
   const rows = await query<OfflineOrganizationRow>(
@@ -775,27 +649,6 @@ export async function listOfflineUnknownScanCodes(
     .filter((row) => Boolean(row.vatNo))
 }
 
-export async function getOfflineAssetScansByVatNo(
-  params: OfflineAssetScanFilters,
-  vatNo: string,
-): Promise<OfflineAssetScanItem[]> {
-  const code = vatNo.trim()
-  if (!code) return []
-  const { where, binds } = buildAssetScanWhere({ ...params, listFilter: 'all' })
-  where.push('vat_no = ?')
-  binds.push(code)
-
-  const rows = await query<OfflineAssetScanRow>(
-    `SELECT id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
-            material_name, count, cycle_id, scan_result, scan_at, scan_by,
-            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
-     FROM offline_asset_scans
-     WHERE ${where.join(' AND ')}
-     ORDER BY vat_no COLLATE NOCASE`,
-    binds,
-  )
-  return rows.map((row) => mapAssetScanRow(row, params.cycleId))
-}
 
 /** Scan lookup: cycle + vatNo only (no factory/warehouse/position/org lock). */
 export async function lookupOfflineAssetScansByVatNo(
@@ -873,26 +726,6 @@ export async function enqueueScanCommand(payload: OfflineScanCommandPayload): Pr
   return id
 }
 
-/** Update queued command JSON + denormalized scan_result/vat_no (e.g. Success → Exist before sync). */
-export async function updatePendingScanCommandPayload(
-  id: string,
-  payload: OfflineScanCommandPayload,
-): Promise<void> {
-  const commandId = id.trim()
-  if (!commandId) return
-  await run(
-    `UPDATE offline_scan_commands
-     SET payload = ?, scan_result = ?, vat_no = ?, cycle_id = ?
-     WHERE id = ? AND synced = 0`,
-    [
-      JSON.stringify(payload),
-      payload.scanResult?.trim() || null,
-      payload.vatNo?.trim() || null,
-      payload.cycleId ?? null,
-      commandId,
-    ],
-  )
-}
 
 export interface PendingScanCommand {
   id: string
@@ -1032,7 +865,7 @@ export async function clearOfflineStoreAfterLogout(): Promise<void> {
   })
 }
 
-export interface PendingScanFailLog {
+interface PendingScanFailLog {
   id: string
   vatNo: string
   cycleId: number
@@ -1097,7 +930,7 @@ export async function listPendingScanFailLogs(
       id: row.id,
       vatNo,
       cycleId: cycle,
-      createdAt: payload?.scanAt?.trim() || new Date(row.created_at).toISOString(),
+      createdAt: payload?.scanAt?.trim() || formatVietnamDateTime(new Date(row.created_at)),
       createdBy,
       syncError: row.sync_error,
     })
@@ -1194,7 +1027,7 @@ export function mergeScanFlags(
   return { isComplete, isSuccess, isWarning, isError }
 }
 
-export function resolveLocalScanStatus(
+function resolveLocalScanStatus(
   existing: {
     isComplete?: boolean | null
     isSuccess?: boolean | null

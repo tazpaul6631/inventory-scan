@@ -53,7 +53,3 @@ export async function deleteUser(id: string, params?: DeleteUserRequest) {
   return data
 }
 
-export async function userLogout(userId?: string) {
-  const { data } = await http.post('/user/uc/logout', { userId })
-  return data
-}

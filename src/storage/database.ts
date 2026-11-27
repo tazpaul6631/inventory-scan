@@ -15,7 +15,7 @@ const WEB_DB_PATH = 'db/srcvip.db'
 
 type BindValue = string | number | null
 
-export interface SqlSetItem {
+interface SqlSetItem {
   statement: string
   values: BindValue[]
 }
@@ -219,7 +219,7 @@ export async function run(sql: string, params: BindValue[] = []): Promise<void> 
   schedulePersist()
 }
 
-export async function execute(sql: string): Promise<void> {
+async function execute(sql: string): Promise<void> {
   if (isNative()) {
     if (!nativeDb) throw new Error(trError('sqliteNative'))
     await nativeDb.execute(sql, txDepth > 0 ? false : true)
@@ -348,21 +348,6 @@ export async function withBulkWrite<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function exportSqliteBytes(): Promise<Uint8Array> {
-  if (isNative()) {
-    if (!nativeDb) throw new Error(trError('sqliteNative'))
-    const json = await nativeDb.exportToJson('full')
-    const text = JSON.stringify(json.export || json)
-    return new TextEncoder().encode(text)
-  }
-  if (!webDb) throw new Error(trError('sqliteWeb'))
-  try {
-    await persistWebDb()
-  } catch {
-    // still return in-memory export
-  }
-  return webDb.export()
-}
 
 export async function flushDatabase(): Promise<void> {
   if (isNative()) return
@@ -373,6 +358,3 @@ export async function flushDatabase(): Promise<void> {
   }
 }
 
-export function isDatabaseReady(): boolean {
-  return ready
-}

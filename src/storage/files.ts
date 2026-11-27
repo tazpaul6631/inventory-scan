@@ -160,25 +160,6 @@ export async function writeBinaryFile(path: string, data: Blob | Uint8Array): Pr
   await idbPut(path, blob)
 }
 
-export async function readTextFile(path: string, directory: 'data' | 'documents' = 'data'): Promise<string> {
-  if (isNative()) {
-    const result = await Filesystem.readFile({
-      path,
-      directory: directory === 'documents' ? DOCS_DIR : DATA_DIR,
-      encoding: Encoding.UTF8,
-    })
-    return String(result.data)
-  }
-
-  if (canUseOpfs()) {
-    const handle = await getOpfsHandle(path, false)
-    const file = await handle.getFile()
-    return file.text()
-  }
-  const blob = await idbGet(path)
-  if (!blob) throw new Error(trError('invalidPath'))
-  return blob.text()
-}
 
 export async function readBinaryFile(path: string): Promise<Blob> {
   if (isNative()) {

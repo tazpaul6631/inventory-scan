@@ -18,8 +18,8 @@ import {
 import { withBulkWrite } from '@/storage/database'
 
 export type OfflineDownloadKey = 'warehouses' | 'positions' | 'organizations' | 'assetScans'
-export type OfflineItemState = 'pending' | 'loading' | 'done' | 'error'
-export type OfflinePhase = 'idle' | 'running' | 'finished' | 'error'
+type OfflineItemState = 'pending' | 'loading' | 'done' | 'error'
+type OfflinePhase = 'idle' | 'running' | 'finished' | 'error'
 
 export interface OfflineItemProgress {
   key: OfflineDownloadKey
@@ -30,7 +30,7 @@ export interface OfflineItemProgress {
   error: string
 }
 
-export const OFFLINE_PIPELINE_ORDER: OfflineDownloadKey[] = [
+const OFFLINE_PIPELINE_ORDER: OfflineDownloadKey[] = [
   'warehouses',
   'positions',
   'organizations',

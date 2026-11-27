@@ -4,8 +4,8 @@ import type { Session } from '@/types'
 const SESSION_KEY = 'session'
 const LOCAL_STORAGE_KEY = 'inventory-scan.session'
 
-export const LOCAL_EMAIL = 'admin'
-export const LOCAL_PASSWORD = 'admin'
+const LOCAL_EMAIL = 'admin'
+const LOCAL_PASSWORD = 'admin'
 
 function isValidSession(data: Session | null | undefined): data is Session {
   if (!data) return false
@@ -99,6 +99,3 @@ export async function clearSession(): Promise<void> {
   }
 }
 
-export function sessionMatch(email: string, password: string): boolean {
-  return email.trim() === LOCAL_EMAIL && password === LOCAL_PASSWORD
-}

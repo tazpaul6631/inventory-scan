@@ -7,15 +7,8 @@ export function formatDateTime(value: number | string | null | undefined): strin
   return dayjs(parsed).format('DD/MM/YYYY HH:mm:ss')
 }
 
-export function formatMoney(value: number): string {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-    maximumFractionDigits: 0,
-  }).format(value)
-}
 
-export function stripMarks(value: string): string {
+function stripMarks(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -32,9 +25,3 @@ export function personInitials(name: string): string {
   return `${first}${last}`.toUpperCase()
 }
 
-export function formatBytes(bytes: number | null | undefined): string {
-  if (!bytes) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}

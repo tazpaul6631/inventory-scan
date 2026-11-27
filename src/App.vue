@@ -28,6 +28,15 @@ const error = ref('')
 let backupTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
 
+/** Hash history keeps pathname at "/", so the page the user was on lives in the hash. */
+function intendedLocation(): string {
+  const hash = window.location.hash.replace(/^#/, '')
+  return hash.startsWith('/') ? hash : '/'
+}
+
+/** Read before the session loads: the guard cancels the first navigation until auth is ready. */
+const intendedAtLoad = intendedLocation()
+
 function stopRedirectTimer() {
   if (!redirectTimer) return
   clearInterval(redirectTimer)
@@ -62,13 +71,16 @@ onMounted(async () => {
     await settings.load()
     applyLocale(normalizeLocale(settings.current.locale))
     await auth.load()
-    const intendedPath = window.location.pathname
-    const intendedFull = `${window.location.pathname}${window.location.search}`
+    const intendedFull = intendedAtLoad
+    const intendedPath = intendedFull.split(/[?#]/)[0]
     if (!auth.isLoggedIn) {
-      if (route.name !== 'login') {
+      if (intendedPath === '/login') {
+        // Keep the existing ?redirect= instead of replacing it with a bare login.
+        if (route.name !== 'login') await router.replace(intendedFull)
+      } else {
         await router.replace({
           name: 'login',
-          query: intendedPath === '/login' ? {} : { redirect: intendedFull },
+          query: intendedPath === '/' ? {} : { redirect: intendedFull },
         })
       }
     } else if (!pathMatchesShell(intendedPath) || intendedPath === '/' || intendedPath === '/login') {

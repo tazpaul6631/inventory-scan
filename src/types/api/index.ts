@@ -14,7 +14,6 @@ export type {
   ViewUser,
   ViewUserBase,
 } from './user'
-export type { ViewRole } from './role'
 export type {
   ViewFactory,
   FactoryQueryResultRequest,

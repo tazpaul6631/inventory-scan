@@ -17,26 +17,17 @@ export async function applyNativeChrome(): Promise<void> {
   }
 }
 
-export function platformName(): string {
-  return Capacitor.getPlatform()
-}
 
-export function hasWebSerial(): boolean {
-  return typeof navigator !== 'undefined' && Boolean(navigator.serial)
-}
 
 export function hasWebNfc(): boolean {
   return typeof window !== 'undefined' && Boolean(window.NDEFReader)
 }
 
-export function hasGetUserMedia(): boolean {
-  return Boolean(navigator.mediaDevices?.getUserMedia)
-}
 
 export type DeviceShell = 'web' | 'tablet' | 'mobile'
 
 /** Build-time shell override: `web` | `mobile` (from VITE_APP_SHELL). */
-export function forcedShell(): 'web' | 'mobile' | null {
+function forcedShell(): 'web' | 'mobile' | null {
   const value = String(import.meta.env.VITE_APP_SHELL ?? '')
     .trim()
     .toLowerCase()
@@ -55,7 +46,7 @@ export function detectDeviceShell(): DeviceShell {
   return 'web'
 }
 
-export function isAppShell(): boolean {
+function isAppShell(): boolean {
   const forced = forcedShell()
   if (forced === 'mobile') return true
   if (forced === 'web') return false

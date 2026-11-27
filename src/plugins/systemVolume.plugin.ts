@@ -1,16 +1,16 @@
 import { registerPlugin } from '@capacitor/core'
 
-export interface MediaVolumeState {
+interface MediaVolumeState {
   current: number
   max: number
   percent: number
 }
 
-export interface SetMediaVolumeOptions {
+interface SetMediaVolumeOptions {
   percent: number
 }
 
-export interface SystemVolumePlugin {
+interface SystemVolumePlugin {
   getMediaVolume(): Promise<MediaVolumeState>
   setMediaVolume(options: SetMediaVolumeOptions): Promise<MediaVolumeState>
 }

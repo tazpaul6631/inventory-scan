@@ -1,4 +1,5 @@
 import { http } from '@/services/http'
+import { toApiLocalDateTime } from '@/utils/localDateTime'
 import type {
   ApiResponse,
   AssetInfoScanResultQueryResult,
@@ -10,11 +11,6 @@ import type {
   SyncAiScanResultItem,
   SyncScanFailLogItem,
 } from '@/types/api'
-
-// export async function queryAssetInfoViewResult(params: AssetQueryResultRequest) {
-//   const { data } = await http.post<ApiResponse<AssetQueryResult>>('/asset/aivc/queryresult', params)
-//   return data
-// }
 
 export async function queryAssetInfoResult(params?: AssetQueryResultRequest) {
   const { data } = await http.post<ApiResponse<AssetQueryResult>>(
@@ -33,6 +29,19 @@ export async function queryAssetInfoScanResult(params?: AssetQueryResultRequest)
   return data
 }
 
+export interface ExcelAisrExportFile {
+  filePath?: string | null
+  fileName?: string | null
+}
+
+/** Excel of the filtered scan-result list. `data.filePath` is the file to download. */
+export async function exportAssetInfoScanResultExcel(params?: AssetQueryResultRequest) {
+  const { data } = await http.post<ApiResponse<ExcelAisrExportFile>>('/export/ec/excelaisr', {
+    ...params,
+  })
+  return data
+}
+
 /** Offline base dump for a cycle (paginated; can be 70k+). */
 export async function baseQueryAssetInfoScanViewResult(params?: AssetQueryResultRequest) {
   const { data } = await http.post<ApiResponse<AssetInfoScanResultQueryResult>>(
@@ -42,14 +51,6 @@ export async function baseQueryAssetInfoScanViewResult(params?: AssetQueryResult
   return data
 }
 
-/** Mobile to-check list for a cycle / position. */
-export async function queryAssetInfoScanResultByCycle(params?: AssetQueryResultRequest) {
-  const { data } = await http.post<ApiResponse<AssetInfoScanResultQueryResult>>(
-    '/asset/aisrc/queryresult',
-    params ?? {},
-  )
-  return data
-}
 
 function toAiScanCommandBody(params: CreateAiScanResultRequest): CreateAiScanResultRequest {
   return {
@@ -65,7 +66,7 @@ function toAiScanCommandBody(params: CreateAiScanResultRequest): CreateAiScanRes
     cycleId: params.cycleId,
     scanResult: params.scanResult ?? null,
     scanCount: params.scanCount,
-    scanAt: params.scanAt ?? null,
+    scanAt: params.scanAt ? toApiLocalDateTime(params.scanAt) : null,
     scanBy: params.scanBy,
   }
 }
@@ -148,7 +149,7 @@ export async function createScanFailLog(params: CreateScanFailLogRequest) {
   const form = new FormData()
   form.append('VatNo', params.vatNo)
   form.append('CycleId', String(params.cycleId))
-  form.append('CreatedAt', params.createdAt)
+  form.append('CreatedAt', toApiLocalDateTime(params.createdAt))
   form.append('CreatedBy', params.createdBy)
   if (params.image) {
     form.append('Image', params.image, 'evidence.jpg')
@@ -163,7 +164,7 @@ export async function syncScanFailLogsBatch(items: SyncScanFailLogItem[]) {
   items.forEach((item, index) => {
     appendIndexed(form, index, 'VatNo', item.vatNo)
     appendIndexed(form, index, 'CycleId', String(item.cycleId))
-    appendIndexed(form, index, 'CreatedAt', item.createdAt)
+    appendIndexed(form, index, 'CreatedAt', toApiLocalDateTime(item.createdAt))
     appendIndexed(form, index, 'CreatedBy', item.createdBy)
     if (item.image) appendIndexed(form, index, 'Image', item.image, 'evidence.jpg')
   })
@@ -171,7 +172,7 @@ export async function syncScanFailLogsBatch(items: SyncScanFailLogItem[]) {
   return data
 }
 
-export async function syncAssetInfosFromApi(params: { createdBy: string }) {
+async function syncAssetInfosFromApi(params: { createdBy: string }) {
   const { data } = await http.post<ApiResponse<number>>('/asset/aic/syncfromapi', params)
   return data
 }
@@ -192,7 +193,7 @@ export async function pollSyncAssetInfosFromApi(
   return { success: true, data: 0, message: undefined }
 }
 
-export async function syncAssetInfoScansFromApi(params: { createdBy: string }) {
+async function syncAssetInfoScansFromApi(params: { createdBy: string }) {
   const { data } = await http.post<ApiResponse<number>>('/asset/aisrc/syncfromapi', params)
   return data
 }

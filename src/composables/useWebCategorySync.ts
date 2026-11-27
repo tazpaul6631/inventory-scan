@@ -18,8 +18,8 @@ export type SyncTableKey =
   | 'assetInfos'
   | 'assetInfoScans'
 
-export type SyncItemState = 'pending' | 'loading' | 'done' | 'error'
-export type SyncPhase = 'idle' | 'running' | 'finished' | 'error'
+type SyncItemState = 'pending' | 'loading' | 'done' | 'error'
+type SyncPhase = 'idle' | 'running' | 'finished' | 'error'
 
 export interface SyncItemProgress {
   key: SyncTableKey
@@ -30,7 +30,7 @@ export interface SyncItemProgress {
   error: string
 }
 
-export const SYNC_PIPELINE_ORDER: SyncTableKey[] = [
+const SYNC_PIPELINE_ORDER: SyncTableKey[] = [
   'factories',
   'warehouses',
   'positions',

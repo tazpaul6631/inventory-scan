@@ -1,4 +1,4 @@
-export type ScanFlagFields = {
+type ScanFlagFields = {
   isComplete?: boolean | null
   isSuccess?: boolean | null
   isWarning?: boolean | null

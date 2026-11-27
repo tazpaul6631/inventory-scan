@@ -3,9 +3,9 @@ import { readBinaryFile } from '@/storage/files'
 import { createId, now } from '@/utils/id'
 import { EVIDENCE_MEDIA_KIND } from '@/services/evidence-photo'
 
-export type MediaSyncStatus = 'pending' | 'synced' | 'error'
+type MediaSyncStatus = 'pending' | 'synced' | 'error'
 
-export interface MediaRow {
+interface MediaRow {
   id: string
   recordId: string | null
   kind: string
@@ -17,7 +17,7 @@ export interface MediaRow {
   syncStatus: MediaSyncStatus
 }
 
-export interface InsertEvidenceMediaInput {
+interface InsertEvidenceMediaInput {
   id?: string
   recordId: string
   path: string
@@ -109,35 +109,11 @@ export async function listMediaByRecordId(recordId: string): Promise<MediaRow[]>
   return rows.map(mapMediaRow)
 }
 
-export async function listPendingEvidenceMedia(limit = 50): Promise<MediaRow[]> {
-  const rows = await query<{
-    id: string
-    record_id: string | null
-    kind: string
-    path: string
-    mime: string
-    size: number | null
-    duration_ms: number | null
-    created_at: number
-    sync_status: string
-  }>(
-    `SELECT id, record_id, kind, path, mime, size, duration_ms, created_at, sync_status
-     FROM media
-     WHERE kind = ? AND sync_status = 'pending'
-     ORDER BY created_at ASC
-     LIMIT ?`,
-    [EVIDENCE_MEDIA_KIND, limit],
-  )
-  return rows.map(mapMediaRow)
-}
 
 export async function markMediaSynced(id: string): Promise<void> {
   await run(`UPDATE media SET sync_status = 'synced' WHERE id = ?`, [id])
 }
 
-export async function markMediaSyncError(id: string): Promise<void> {
-  await run(`UPDATE media SET sync_status = 'error' WHERE id = ?`, [id])
-}
 
 async function blobToBase64(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer()
@@ -162,8 +138,3 @@ export async function getEvidenceBlobForRecord(recordId: string): Promise<Blob |
   }
 }
 
-export async function getEvidenceBase64ForRecord(recordId: string): Promise<string | null> {
-  const blob = await getEvidenceBlobForRecord(recordId)
-  if (!blob) return null
-  return blobToBase64(blob)
-}
