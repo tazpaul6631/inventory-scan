@@ -339,6 +339,9 @@ function buildAppliedFilters(): AppliedFilters {
 }
 
 function commitFilters() {
+  // Any committed change also picks up the text currently typed in the drawer.
+  appliedVatNo = vatNo.value.trim()
+  appliedResponsibleUnit = responsibleUnit.value.trim()
   appliedFilters = buildAppliedFilters()
 }
 
