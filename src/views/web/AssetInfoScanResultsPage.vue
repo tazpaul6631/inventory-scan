@@ -574,6 +574,16 @@ function onPage(event: { page: number; rows: number }) {
           <label for="scan-result-factory">{{ t('assetScanResult.factory') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
+          <IconField>
+            <InputText id="scan-result-responsible-unit" v-model="responsibleUnit" class="w-full" autocomplete="off"
+              @keyup.enter="filterDrawerVisible = false" />
+            <InputIcon v-if="responsibleUnit" class="cursor-pointer" @click="responsibleUnit = ''">
+              <i class="pi pi-times" />
+            </InputIcon>
+          </IconField>
+          <label for="scan-result-responsible-unit">{{ t('assetScanResult.responsibleUnit') }}</label>
+        </FloatLabel>
+        <FloatLabel class="w-full">
           <Select input-id="scan-result-order-code" v-model="orderCode" :options="orderCodeOptions" option-label="label"
             option-value="value" show-clear filter class="w-full" :loading="loadingOrderCodes"
             @before-show="loadOrderCodeOptions" @update:model-value="onFilterChange" />
@@ -609,16 +619,6 @@ function onPage(event: { page: number; rows: number }) {
           <label for="scan-result-scan-result">{{ t('assetScanResult.scanResult') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
-          <IconField>
-            <InputText id="scan-result-responsible-unit" v-model="responsibleUnit" class="w-full" autocomplete="off"
-              @keyup.enter="filterDrawerVisible = false" />
-            <InputIcon v-if="responsibleUnit" class="cursor-pointer" @click="responsibleUnit = ''">
-              <i class="pi pi-times" />
-            </InputIcon>
-          </IconField>
-          <label for="scan-result-responsible-unit">{{ t('assetScanResult.responsibleUnit') }}</label>
-        </FloatLabel>
-        <FloatLabel class="w-full">
           <DatePicker input-id="scan-result-scan-at" v-model="dates" selection-mode="range" :manual-input="false"
             date-format="dd/mm/yy" show-clear class="w-full" @update:model-value="onDatesChange" />
           <label for="scan-result-scan-at">{{ t('assetScanResult.scanDateRange') }}</label>
@@ -649,26 +649,35 @@ function onPage(event: { page: number; rows: number }) {
         <Column field="materialCode" :header="t('assetScanResult.materialCode')" />
         <Column field="materialName" :header="t('assetScanResult.materialName')" />
         <Column field="materialEnName" :header="t('assetScanResult.materialEnName')" />
+        <Column field="wPosition" :header="t('assetScanResult.wPosition')" />
         <Column field="warehouseName" :header="t('assetScanResult.warehouseName')" />
+        <Column field="materialUnitNo" :header="t('assetScanResult.materialUnitNo')" />
         <Column field="orderCode" :header="t('assetScanResult.orderCode')" />
         <Column field="responsibleUnit" :header="t('assetScanResult.responsibleUnit')"
           header-class="!max-w-30 !whitespace-normal" />
         <Column field="count" :header="t('assetScanResult.count')" />
-        <Column field="materialUnitNo" :header="t('assetScanResult.materialUnitNo')" />
         <Column field="scanCount" :header="t('assetScanResult.scanCount')" />
-        <Column field="wPosition" :header="t('assetScanResult.wPosition')" />
-        <Column field="scanWPosition" :header="t('assetScanResult.scanWPosition')" />
+        <Column field="scanWPosition" :header="t('assetScanResult.scanWPosition')">
+          <template #body="{ data }">
+            <span v-if="!loading">{{ data.scanWPosition || '—' }}</span>
+          </template>
+        </Column>
         <Column field="scanResult" :header="t('assetScanResult.scanResult')">
           <template #body="{ data }">
             <Tag v-if="!loading && scanResultSeverity(data)" :value="data.scanResult"
               :severity="scanResultSeverity(data)" />
-            <span v-else-if="!loading">{{ data.scanResult }}</span>
+            <span v-else-if="!loading">{{ data.scanResult || '—' }}</span>
           </template>
         </Column>
-        <Column field="scanName" :header="t('assetScanResult.scanName')" />
+        <Column field="scanName" :header="t('assetScanResult.scanName')">
+          <template #body="{ data }">
+            <span v-if="!loading">{{ data.scanName || '—' }}</span>
+          </template>
+        </Column>
         <Column field="scanAt" :header="t('assetScanResult.scanAt')">
           <template #body="{ data }">
-            <div class="flex flex-col whitespace-nowrap leading-tight">
+            <span v-if="!loading && !data.scanAt">—</span>
+            <div v-else class="flex flex-col whitespace-nowrap leading-tight">
               <span>{{ scanAtParts(data.scanAt).date }}</span>
               <span>{{ scanAtParts(data.scanAt).time }}</span>
             </div>
