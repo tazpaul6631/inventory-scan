@@ -199,8 +199,8 @@ watch(
     <div class="shell" :class="{ drawer: isDrawer, collapsed: webIconRail, 'sidebar-hover': webIconRail && hoverOpen }">
       <div class="shell-body">
         <div v-if="webIconRail" class="sidebar-rail-spacer" aria-hidden="true" />
-        <aside v-if="!appShell" class="sidebar" :class="{ open, hover: webIconRail && hoverOpen }" @mouseenter="onSidebarEnter"
-          @mouseleave="onSidebarLeave" @click.stop>
+        <aside v-if="!appShell" class="sidebar" :class="{ open, hover: webIconRail && hoverOpen }"
+          @mouseenter="onSidebarEnter" @mouseleave="onSidebarLeave" @click.stop>
           <RouterLink :to="homeTo" class="brand brand-btn" :title="hoverOpen ? undefined : t('app.name')"
             @click="closeSidebar">
             <img class="brand-mark" src="/logo-icon.jpg" :alt="t('app.name')" />
@@ -226,7 +226,7 @@ watch(
         <div class="main">
           <header class="topbar">
             <div class="flex min-w-0 items-center gap-2 text-cyan-700">
-              <Button v-if="!appShell" class="menu-btn" icon="pi pi-bars" size="large" :aria-label="t('nav.menu')"
+              <Button v-if="!appShell" class="menu-btn" icon="pi pi-bars" :aria-label="t('nav.menu')"
                 @click="toggleSidebar" />
               <strong class="min-w-0 truncate text-xl">{{ title }}</strong>
             </div>

@@ -4,6 +4,8 @@ export interface AssetQueryResultRequest {
   factoryId?: number | null
   warehouseId?: number | null
   wPositionId?: number | null
+  /** Position the item was scanned at. */
+  scanWPositionId?: number | null
   cycleId?: number | null
   /** Exact match; return every location of this code in the cycle. */
   vatNo?: string | null
@@ -67,6 +69,8 @@ export interface ViewAssetInfoScanResult extends ViewAssetInfo {
   scanCount?: number | null
   scanAt?: string | null
   scanBy?: string | null
+  scanWPositionId?: number
+  scanWPosition?: string | null
   isComplete?: boolean
   isSuccess?: boolean
   isWarning?: boolean
@@ -112,6 +116,9 @@ export interface CreateAiScanResultRequest {
   scanCount: number
   scanAt?: string | null
   scanBy: string
+  /** Position the user had selected when scanning (not the asset's original position). */
+  scanWPositionId?: number | null
+  scanWPosition?: string | null
 }
 
 /** Online create may attach Image as binary; sync batch uses optional IFormFile Blob. */
@@ -129,6 +136,8 @@ export interface CreateScanFailLogRequest {
   cycleId: number
   createdAt: string
   createdBy: string
+  scanWPositionId?: number | null
+  scanWPosition?: string | null
   image?: Blob | null
 }
 
@@ -137,5 +146,7 @@ export interface SyncScanFailLogItem {
   cycleId: number
   createdAt: string
   createdBy: string
+  scanWPositionId?: number | null
+  scanWPosition?: string | null
   image?: Blob | null
 }

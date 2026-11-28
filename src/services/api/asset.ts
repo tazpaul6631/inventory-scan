@@ -68,6 +68,8 @@ function toAiScanCommandBody(params: CreateAiScanResultRequest): CreateAiScanRes
     scanCount: params.scanCount,
     scanAt: params.scanAt ? toApiLocalDateTime(params.scanAt) : null,
     scanBy: params.scanBy,
+    scanWPositionId: params.scanWPositionId ?? null,
+    scanWPosition: params.scanWPosition ?? null,
   }
 }
 
@@ -88,6 +90,8 @@ function appendScanCommandForm(form: FormData, params: CreateAiScanResultRequest
   form.append('ScanCount', String(params.scanCount))
   if (params.scanAt != null) form.append('ScanAt', params.scanAt)
   form.append('ScanBy', params.scanBy)
+  if (params.scanWPositionId != null) form.append('ScanWPositionId', String(params.scanWPositionId))
+  if (params.scanWPosition != null) form.append('ScanWPosition', params.scanWPosition)
 }
 
 /** Online scan command — always multipart (Swagger IFormFile); Image only when present. */
@@ -138,6 +142,10 @@ export async function syncAiScanResultsBatch(items: SyncAiScanResultItem[]) {
     appendIndexed(form, index, 'ScanCount', String(base.scanCount))
     if (base.scanAt != null) appendIndexed(form, index, 'ScanAt', base.scanAt)
     appendIndexed(form, index, 'ScanBy', base.scanBy)
+    if (base.scanWPositionId != null) {
+      appendIndexed(form, index, 'ScanWPositionId', String(base.scanWPositionId))
+    }
+    if (base.scanWPosition != null) appendIndexed(form, index, 'ScanWPosition', base.scanWPosition)
     if (item.image) appendIndexed(form, index, 'Image', item.image, 'evidence.jpg')
   })
   const { data } = await http.post<ApiResponse<unknown>>('/sync/sc/syncaisr', form)
@@ -151,6 +159,8 @@ export async function createScanFailLog(params: CreateScanFailLogRequest) {
   form.append('CycleId', String(params.cycleId))
   form.append('CreatedAt', toApiLocalDateTime(params.createdAt))
   form.append('CreatedBy', params.createdBy)
+  if (params.scanWPositionId != null) form.append('ScanWPositionId', String(params.scanWPositionId))
+  if (params.scanWPosition != null) form.append('ScanWPosition', params.scanWPosition)
   if (params.image) {
     form.append('Image', params.image, 'evidence.jpg')
   }
@@ -166,6 +176,10 @@ export async function syncScanFailLogsBatch(items: SyncScanFailLogItem[]) {
     appendIndexed(form, index, 'CycleId', String(item.cycleId))
     appendIndexed(form, index, 'CreatedAt', toApiLocalDateTime(item.createdAt))
     appendIndexed(form, index, 'CreatedBy', item.createdBy)
+    if (item.scanWPositionId != null) {
+      appendIndexed(form, index, 'ScanWPositionId', String(item.scanWPositionId))
+    }
+    if (item.scanWPosition != null) appendIndexed(form, index, 'ScanWPosition', item.scanWPosition)
     if (item.image) appendIndexed(form, index, 'Image', item.image, 'evidence.jpg')
   })
   const { data } = await http.post<ApiResponse<unknown>>('/sync/sc/syncaisfl', form)

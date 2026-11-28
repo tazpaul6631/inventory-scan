@@ -22,6 +22,7 @@ const zhTW: MessageSchema = {
     mobileScan: '掃描',
     web: '網頁',
     menu: '選單',
+    return: '返回',
   },
   footer: {
     copyright: 'System • © 2026 By App Team',
@@ -177,7 +178,7 @@ const zhTW: MessageSchema = {
   },
   assetScanResult: {
     warehouseName: '倉庫',
-    wPosition: '儲位',
+    wPosition: '實際位置',
     vatNo: 'VAT No',
     orderCode: '部門',
     materialCode: '物料編號',
@@ -186,6 +187,7 @@ const zhTW: MessageSchema = {
     materialUnitNo: '物料單位編號',
     responsibleUnit: '負責部門',
     scanCount: '掃描',
+    scanWPosition: '掃描位置',
     scanResult: '掃描結果',
     scanName: '掃描人員',
     scanAt: '掃描日期',
@@ -209,7 +211,7 @@ const zhTW: MessageSchema = {
     loadUsersError: '無法載入使用者清單',
     resetFiltersTitle: '清除篩選',
     filtersTitle: '篩選',
-    isComplete: '顯示全部',
+    isComplete: '已盤點',
   },
   cycle: {
     code: '代碼',
@@ -249,6 +251,7 @@ const zhTW: MessageSchema = {
     warehouse: '倉庫',
     position: '位置',
     organization: '部門',
+    responsibleUnit: '負責部門',
     changeLocationDialogTitle: '變更盤點資訊',
     locationTitle: '選擇要盤點的資訊',
     apply: '套用',

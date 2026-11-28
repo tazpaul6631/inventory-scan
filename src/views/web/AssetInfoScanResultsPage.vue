@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
@@ -57,13 +57,14 @@ const factoryId = ref<number | null>(null)
 const warehouseId = ref<number | null>(null)
 const orderCode = ref<string | null>(null)
 const wPosition = ref<number | null>(null)
+const scanWPosition = ref<number | null>(null)
 const dates = ref<Date[] | null>(null)
 const scanBy = ref<string | null>(null)
 const scanResult = ref<string | null>(null)
 const vatNo = ref('')
 const responsibleUnit = ref('')
-/** Unticked (default): send isComplete = true. Ticked: show everything, so isComplete is not sent. */
-const showAll = ref(false)
+/** Ticked (default): send isComplete = true. Unticked: isComplete is not sent. */
+const isCompleteOnly = ref(true)
 const filterDrawerVisible = ref(false)
 
 const cycleOptions = ref<{ label: string; value: number }[]>([])
@@ -71,11 +72,13 @@ const factoryOptions = ref<{ label: string; value: number }[]>([])
 const warehouseOptions = ref<{ label: string; value: number }[]>([])
 const orderCodeOptions = ref<{ label: string; value: string }[]>([])
 const wPositionOptions = ref<{ label: string; value: number }[]>([])
+const scanWPositionOptions = ref<{ label: string; value: number }[]>([])
 const loadingCycles = ref(false)
 const loadingFactories = ref(false)
 const loadingWarehouses = ref(false)
 const loadingOrderCodes = ref(false)
 const loadingwPosition = ref(false)
+const loadingScanWPosition = ref(false)
 const scanByOptions = ref<{ label: string; value: string }[]>([])
 const loadingScanBy = ref(false)
 /** Hardcoded scan-result filter. Label WrongPosition is sent as WrongWposition. */
@@ -92,22 +95,21 @@ let warehousesLoadedFor: string | null = null
 let orderCodesLoadedFor: string | null = null
 /** `factoryId|warehouseId` key the current position options were loaded for; null = not loaded. */
 let wPositionsLoadedFor: string | null = null
+/** Same key as `wPositionsLoadedFor`, for the scanned-position options. */
+let scanWPositionsLoadedFor: string | null = null
 let scanByLoaded = false
-/** Typed text filters actually applied to the query (typing is debounced). */
-let appliedVatNo = ''
-let appliedResponsibleUnit = ''
-let textFilterTimer: ReturnType<typeof setTimeout> | null = null
-const TEXT_FILTER_DEBOUNCE_MS = 500
 let loadRequestId = 0
 
-onBeforeUnmount(() => cancelTextFilterTimer())
+/**
+ * Typed text filters (vatNo / responsibleUnit). The inputs are only drafts; they are applied when the
+ * drawer closes. Every other filter (select, date range, checkbox) is applied as soon as it changes.
+ */
+let appliedVatNo = ''
+let appliedResponsibleUnit = ''
 
-function cancelTextFilterTimer() {
-  if (textFilterTimer != null) {
-    clearTimeout(textFilterTimer)
-    textFilterTimer = null
-  }
-}
+/** Filters actually sent to the API, so paging and export always match the table. */
+type AppliedFilters = Omit<AssetQueryResultRequest, 'cycleId' | 'page' | 'pageSize'>
+let appliedFilters: AppliedFilters = buildAppliedFilters()
 
 function warnToast(summary: string) {
   toast.add({ severity: 'warn', summary, life: 2500, closable: false })
@@ -241,6 +243,32 @@ async function loadwPositionOptions() {
   }
 }
 
+async function loadScanWPositionOptions() {
+  const key = wPositionKey()
+  if (scanWPositionsLoadedFor === key || loadingScanWPosition.value) return
+  loadingScanWPosition.value = true
+  try {
+    const res = await getAreaList({
+      ...(factoryId.value != null ? { factoryId: factoryId.value } : {}),
+      ...(warehouseId.value != null ? { warehouseId: warehouseId.value } : {}),
+    })
+    if (key !== wPositionKey()) return
+    if (res.success === false) {
+      warnToast(res.message || t('assetScanResult.loadPositionsError'))
+      return
+    }
+    scanWPositionOptions.value = (res.data ?? []).map((item) => ({
+      label: item.wposition?.trim() || String(item.id),
+      value: item.id,
+    }))
+    scanWPositionsLoadedFor = key
+  } catch (err) {
+    warnToast(readApiFailure(err) || t('assetScanResult.loadPositionsError'))
+  } finally {
+    loadingScanWPosition.value = false
+  }
+}
+
 async function loadScanByOptions() {
   if (scanByLoaded || loadingScanBy.value) return
   loadingScanBy.value = true
@@ -272,6 +300,12 @@ function resetWPositionFilter() {
   wPositionsLoadedFor = null
 }
 
+function resetScanWPositionFilter() {
+  scanWPosition.value = null
+  scanWPositionOptions.value = []
+  scanWPositionsLoadedFor = null
+}
+
 function clearRows() {
   rows.value = []
   total.value = 0
@@ -287,21 +321,30 @@ function scanRangeParams(): { scanAtFrom?: string; scanAtTo?: string } {
   }
 }
 
-/** Filters currently applied to the table. Omits paging so export covers the full result. */
-function scanResultFilterParams(selectedCycleId: number): AssetQueryResultRequest {
+/** Live select / date / checkbox values plus the already-applied text filters, as API filters. */
+function buildAppliedFilters(): AppliedFilters {
   return {
-    cycleId: selectedCycleId,
     ...(factoryId.value != null ? { factoryId: factoryId.value } : {}),
     ...(warehouseId.value != null ? { warehouseId: warehouseId.value } : {}),
     ...(wPosition.value != null ? { wPositionId: wPosition.value } : {}),
+    ...(scanWPosition.value != null ? { scanWPositionId: scanWPosition.value } : {}),
     ...(orderCode.value ? { orderCode: orderCode.value } : {}),
     ...(scanBy.value ? { scanBy: scanBy.value } : {}),
     ...(scanResult.value ? { scanResult: scanResult.value } : {}),
     ...(appliedVatNo ? { vatNo: appliedVatNo } : {}),
     ...(appliedResponsibleUnit ? { responsibleUnit: appliedResponsibleUnit } : {}),
-    ...(showAll.value ? {} : { isComplete: true }),
+    ...(isCompleteOnly.value ? { isComplete: true } : {}),
     ...scanRangeParams(),
   }
+}
+
+function commitFilters() {
+  appliedFilters = buildAppliedFilters()
+}
+
+/** Filters applied to the table. Omits paging so export covers the full result. */
+function scanResultFilterParams(selectedCycleId: number): AssetQueryResultRequest {
+  return { cycleId: selectedCycleId, ...appliedFilters }
 }
 
 function exportDownloadName(filePath: string, fileName?: string | null): string {
@@ -390,8 +433,7 @@ function resetFilters() {
   dates.value = null
   scanBy.value = null
   scanResult.value = null
-  showAll.value = false
-  cancelTextFilterTimer()
+  isCompleteOnly.value = true
   vatNo.value = ''
   appliedVatNo = ''
   responsibleUnit.value = ''
@@ -401,12 +443,14 @@ function resetFilters() {
   warehousesLoadedFor = null
   orderCodesLoadedFor = null
   resetWPositionFilter()
+  resetScanWPositionFilter()
 }
 
 function onCycleChange() {
   // Filters are unavailable when no cycle is picked; drop them (and close the drawer) so they cannot linger.
   if (cycleId.value == null) {
     resetFilters()
+    commitFilters()
     filterDrawerVisible.value = false
   }
   reloadFromFirstPage()
@@ -415,6 +459,13 @@ function onCycleChange() {
 /** Clear every filter except the cycle, then reload from the first page. */
 function onResetFilters() {
   resetFilters()
+  commitFilters()
+  reloadFromFirstPage()
+}
+
+/** Select / checkbox changed: apply right away and reload from the first page. */
+function onFilterChange() {
+  commitFilters()
   reloadFromFirstPage()
 }
 
@@ -426,56 +477,14 @@ function onFactoryChange() {
   warehousesLoadedFor = null
   orderCodesLoadedFor = null
   resetWPositionFilter()
-  reloadFromFirstPage()
+  resetScanWPositionFilter()
+  onFilterChange()
 }
 
 function onWarehouseChange() {
   resetWPositionFilter()
-  reloadFromFirstPage()
-}
-
-function onwPositionChange() {
-  reloadFromFirstPage()
-}
-
-function onOrderCodeChange() {
-  reloadFromFirstPage()
-}
-
-function onScanByChange() {
-  reloadFromFirstPage()
-}
-
-function onScanResultChange() {
-  reloadFromFirstPage()
-}
-
-/** Chip color follows isError > isWarning > isSuccess. Null means plain text. */
-function scanResultSeverity(row: ViewAssetInfoScanResult): 'danger' | 'warn' | 'success' | null {
-  if (row.isError) return 'danger'
-  if (row.isWarning) return 'warn'
-  if (row.isSuccess) return 'success'
-  return null
-}
-
-function onShowAllChange() {
-  reloadFromFirstPage()
-}
-
-/** Apply the typed vatNo / responsibleUnit to the query; no request when the trimmed texts are unchanged. */
-function applyTextFilters() {
-  cancelTextFilterTimer()
-  const nextVatNo = vatNo.value.trim()
-  const nextResponsibleUnit = responsibleUnit.value.trim()
-  if (nextVatNo === appliedVatNo && nextResponsibleUnit === appliedResponsibleUnit) return
-  appliedVatNo = nextVatNo
-  appliedResponsibleUnit = nextResponsibleUnit
-  reloadFromFirstPage()
-}
-
-function onTextFilterInput() {
-  cancelTextFilterTimer()
-  textFilterTimer = setTimeout(applyTextFilters, TEXT_FILTER_DEBOUNCE_MS)
+  resetScanWPositionFilter()
+  onFilterChange()
 }
 
 function onDatesChange(value: unknown) {
@@ -484,7 +493,29 @@ function onDatesChange(value: unknown) {
   const hasEnd = Boolean(range?.[1])
   // Wait for both ends; also reload when the range is cleared.
   if (hasStart && !hasEnd) return
+  onFilterChange()
+}
+
+/** Drawer closed: apply the typed vatNo / responsibleUnit; no request when nothing changed. */
+function applyTextFilters() {
+  appliedVatNo = vatNo.value.trim()
+  appliedResponsibleUnit = responsibleUnit.value.trim()
+  const next = buildAppliedFilters()
+  if (JSON.stringify(next) === JSON.stringify(appliedFilters)) return
+  appliedFilters = next
   reloadFromFirstPage()
+}
+
+watch(filterDrawerVisible, (open) => {
+  if (!open) applyTextFilters()
+})
+
+/** Chip color follows isError > isWarning > isSuccess. Null means plain text. */
+function scanResultSeverity(row: ViewAssetInfoScanResult): 'danger' | 'warn' | 'success' | null {
+  if (row.isError) return 'danger'
+  if (row.isWarning) return 'warn'
+  if (row.isSuccess) return 'success'
+  return null
 }
 
 function onPage(event: { page: number; rows: number }) {
@@ -504,44 +535,49 @@ function onPage(event: { page: number; rows: number }) {
             @update:model-value="onCycleChange" />
           <label for="scan-result-cycle">{{ t('assetScanResult.cycle') }}</label>
         </FloatLabel>
-        <FloatLabel class="w-full min-w-80 max-w-80 flex-1">
+      </div>
+      <template v-if="cycleId != null">
+        <div class="flex shrink-0 items-center gap-2">
+          <Button icon="pi pi-filter-fill" size="small" :aria-label="t('assetScanResult.filtersTitle')" outlined
+            @click="filterDrawerVisible = true" />
+          <Button icon="pi pi-refresh" size="small" severity="secondary" outlined
+            :aria-label="t('assetScanResult.resetFiltersTitle')" @click="onResetFilters" />
+          <Button icon="pi pi-file-excel" size="small" :aria-label="t('assetScanResult.exportTitle')"
+            :loading="exporting" :disabled="exporting" @click="onExportExcel" />
+        </div>
+      </template>
+    </div>
+
+    <Drawer v-model:visible="filterDrawerVisible" position="right" :header="t('assetScanResult.filtersTitle')">
+      <div class="flex items-center gap-2 text-sm">
+        <Checkbox v-model="isCompleteOnly" :binary="true" input-id="scan-result-is-complete"
+          @update:model-value="onFilterChange" />
+        <label for="scan-result-is-complete" class="cursor-pointer select-none whitespace-nowrap">
+          {{ t('assetScanResult.isComplete') }}
+        </label>
+      </div>
+      <div class="grid grid-cols-1 gap-5 pt-5 md:grid-cols-1">
+        <FloatLabel class="w-full">
           <IconField>
             <InputText id="scan-result-vat-no" v-model="vatNo" class="w-full" autocomplete="off"
-              @update:model-value="onTextFilterInput" @keyup.enter="applyTextFilters" />
+              @keyup.enter="filterDrawerVisible = false" />
             <InputIcon v-if="vatNo" class="cursor-pointer" @click="vatNo = ''">
               <i class="pi pi-times" />
             </InputIcon>
           </IconField>
           <label for="scan-result-vat-no">{{ t('assetScanResult.vatNo') }}</label>
         </FloatLabel>
-      </div>
-      <template v-if="cycleId != null">
-        <div class="flex shrink-0 items-center gap-2">
-          <Button icon="pi pi-filter-fill" size="large" :aria-label="t('assetScanResult.filtersTitle')" outlined
-            @click="filterDrawerVisible = true" />
-          <Button icon="pi pi-filter-slash" size="large" severity="secondary" outlined
-            :aria-label="t('assetScanResult.resetFiltersTitle')" @click="onResetFilters" />
-          <Button icon="pi pi-file-excel" size="large" :aria-label="t('assetScanResult.exportTitle')"
-            :loading="exporting" :disabled="exporting" @click="onExportExcel" />
-        </div>
-      </template>
-    </div>
-
-    <Drawer v-model:visible="filterDrawerVisible" position="top" style="height: auto"
-      :header="t('assetScanResult.filtersTitle')">
-      <div class="flex items-center gap-2 text-sm">
-        <Checkbox v-model="showAll" :binary="true" input-id="scan-result-is-complete"
-          @update:model-value="onShowAllChange" />
-        <label for="scan-result-is-complete" class="cursor-pointer select-none whitespace-nowrap">
-          {{ t('assetScanResult.isComplete') }}
-        </label>
-      </div>
-      <div class="grid grid-cols-2 gap-3 pt-2 md:grid-cols-4">
         <FloatLabel class="w-full">
           <Select input-id="scan-result-factory" v-model="factoryId" :options="factoryOptions" option-label="label"
             option-value="value" show-clear class="w-full" :loading="loadingFactories" @before-show="loadFactoryOptions"
             @update:model-value="onFactoryChange" />
           <label for="scan-result-factory">{{ t('assetScanResult.factory') }}</label>
+        </FloatLabel>
+        <FloatLabel class="w-full">
+          <Select input-id="scan-result-order-code" v-model="orderCode" :options="orderCodeOptions" option-label="label"
+            option-value="value" show-clear filter class="w-full" :loading="loadingOrderCodes"
+            @before-show="loadOrderCodeOptions" @update:model-value="onFilterChange" />
+          <label for="scan-result-order-code">{{ t('assetScanResult.orderCode') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
           <Select input-id="scan-result-warehouse" v-model="warehouseId" :options="warehouseOptions"
@@ -552,31 +588,30 @@ function onPage(event: { page: number; rows: number }) {
         <FloatLabel class="w-full">
           <Select input-id="scan-result-wPosition" v-model="wPosition" :options="wPositionOptions" option-label="label"
             option-value="value" show-clear filter class="w-full" :loading="loadingwPosition"
-            @before-show="loadwPositionOptions" @update:model-value="onwPositionChange" />
+            @before-show="loadwPositionOptions" @update:model-value="onFilterChange" />
           <label for="scan-result-wPosition">{{ t('assetScanResult.wPosition') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
-          <Select input-id="scan-result-order-code" v-model="orderCode" :options="orderCodeOptions" option-label="label"
-            option-value="value" show-clear filter class="w-full" :loading="loadingOrderCodes"
-            @before-show="loadOrderCodeOptions" @update:model-value="onOrderCodeChange" />
-          <label for="scan-result-order-code">{{ t('assetScanResult.orderCode') }}</label>
+          <Select input-id="scan-result-scan-wPosition" v-model="scanWPosition" :options="scanWPositionOptions"
+            option-label="label" option-value="value" show-clear filter class="w-full" :loading="loadingScanWPosition"
+            @before-show="loadScanWPositionOptions" @update:model-value="onFilterChange" />
+          <label for="scan-result-scan-wPosition">{{ t('assetScanResult.scanWPosition') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
           <Select input-id="scan-result-scan-by" v-model="scanBy" :options="scanByOptions" option-label="label"
             option-value="value" show-clear filter class="w-full" :loading="loadingScanBy"
-            @before-show="loadScanByOptions" @update:model-value="onScanByChange" />
+            @before-show="loadScanByOptions" @update:model-value="onFilterChange" />
           <label for="scan-result-scan-by">{{ t('assetScanResult.scanName') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
           <Select input-id="scan-result-scan-result" v-model="scanResult" :options="scanResultOptions"
-            option-label="label" option-value="value" show-clear class="w-full"
-            @update:model-value="onScanResultChange" />
+            option-label="label" option-value="value" show-clear class="w-full" @update:model-value="onFilterChange" />
           <label for="scan-result-scan-result">{{ t('assetScanResult.scanResult') }}</label>
         </FloatLabel>
         <FloatLabel class="w-full">
           <IconField>
             <InputText id="scan-result-responsible-unit" v-model="responsibleUnit" class="w-full" autocomplete="off"
-              @update:model-value="onTextFilterInput" @keyup.enter="applyTextFilters" />
+              @keyup.enter="filterDrawerVisible = false" />
             <InputIcon v-if="responsibleUnit" class="cursor-pointer" @click="responsibleUnit = ''">
               <i class="pi pi-times" />
             </InputIcon>
@@ -614,14 +649,15 @@ function onPage(event: { page: number; rows: number }) {
         <Column field="materialCode" :header="t('assetScanResult.materialCode')" />
         <Column field="materialName" :header="t('assetScanResult.materialName')" />
         <Column field="materialEnName" :header="t('assetScanResult.materialEnName')" />
-        <Column field="wPosition" :header="t('assetScanResult.wPosition')" />
         <Column field="warehouseName" :header="t('assetScanResult.warehouseName')" />
-        <Column field="materialUnitNo" :header="t('assetScanResult.materialUnitNo')" />
         <Column field="orderCode" :header="t('assetScanResult.orderCode')" />
         <Column field="responsibleUnit" :header="t('assetScanResult.responsibleUnit')"
           header-class="!max-w-30 !whitespace-normal" />
         <Column field="count" :header="t('assetScanResult.count')" />
+        <Column field="materialUnitNo" :header="t('assetScanResult.materialUnitNo')" />
         <Column field="scanCount" :header="t('assetScanResult.scanCount')" />
+        <Column field="wPosition" :header="t('assetScanResult.wPosition')" />
+        <Column field="scanWPosition" :header="t('assetScanResult.scanWPosition')" />
         <Column field="scanResult" :header="t('assetScanResult.scanResult')">
           <template #body="{ data }">
             <Tag v-if="!loading && scanResultSeverity(data)" :value="data.scanResult"

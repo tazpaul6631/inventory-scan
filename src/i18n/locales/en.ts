@@ -20,6 +20,7 @@ const en = {
     mobileScan: 'Scan',
     web: 'Web',
     menu: 'Menu',
+    return: 'Return',
   },
   footer: {
     copyright: 'System • © 2026 By App Team',
@@ -175,7 +176,7 @@ const en = {
   },
   assetScanResult: {
     warehouseName: 'Warehouse',
-    wPosition: 'Position',
+    wPosition: 'Actual position',
     vatNo: 'VAT No',
     orderCode: 'Order code',
     materialCode: 'Material code',
@@ -184,6 +185,7 @@ const en = {
     materialUnitNo: 'Material unit no',
     responsibleUnit: 'Responsible unit',
     scanCount: 'Scan count',
+    scanWPosition: 'Scanned position',
     scanResult: 'Scan result',
     scanName: 'Scan name',
     scanAt: 'Scan date',
@@ -207,7 +209,7 @@ const en = {
     loadUsersError: 'Could not load users',
     resetFiltersTitle: 'Clear filters',
     filtersTitle: 'Filters',
-    isComplete: 'Show all',
+    isComplete: 'Inventoried',
   },
   cycle: {
     code: 'Code',
@@ -247,6 +249,7 @@ const en = {
     warehouse: 'Warehouse',
     position: 'Position',
     organization: 'Organization',
+    responsibleUnit: 'Responsible unit',
     changeLocationDialogTitle: 'Change stocktake details',
     locationTitle: 'Select stocktake details to scan',
     apply: 'Apply',

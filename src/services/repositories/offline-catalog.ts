@@ -62,6 +62,7 @@ interface OfflineAssetScanRow {
   is_error: number | null
   local_scan_status: string | null
   local_scan_qty: number | null
+  responsible_unit: string | null
 }
 
 export type OfflineScanListFilter = 'all' | 'pending' | 'scanned'
@@ -83,6 +84,7 @@ export interface OfflineAssetScanFilters {
   wPositionId?: number
   name?: string
   orderCode?: string
+  responsibleUnit?: string
   listFilter?: OfflineScanListFilter
   limit?: number
   offset?: number
@@ -330,6 +332,66 @@ export async function listOfflinePositions(
 
 
 
+/** Distinct responsibleUnit values from downloaded asset scans (factory + cycle). */
+export async function listOfflineResponsibleUnits(
+  factoryId: number,
+  cycleId: number,
+): Promise<string[]> {
+  const rows = await query<{ name: string }>(
+    `SELECT DISTINCT TRIM(responsible_unit) AS name
+     FROM offline_asset_scans
+     WHERE factory_id = ? AND cycle_id = ?
+       AND TRIM(COALESCE(responsible_unit, '')) <> ''
+     ORDER BY name COLLATE NOCASE`,
+    [factoryId, cycleId],
+  )
+  return rows.map((row) => row.name)
+}
+
+/** Distinct order codes of downloaded scans that belong to one responsibleUnit (factory + cycle). */
+export async function listOfflineOrderCodesByResponsibleUnit(
+  factoryId: number,
+  cycleId: number,
+  responsibleUnit: string,
+  wPositionId?: number,
+): Promise<string[]> {
+  const unit = responsibleUnit.trim()
+  if (!unit) return []
+  const binds: Array<string | number> = [factoryId, cycleId, unit]
+  let positionSql = ''
+  if (wPositionId != null && Number.isFinite(wPositionId)) {
+    positionSql = ' AND w_position_id = ?'
+    binds.push(wPositionId)
+  }
+  const rows = await query<{ code: string }>(
+    `SELECT DISTINCT TRIM(order_code) AS code
+     FROM offline_asset_scans
+     WHERE factory_id = ? AND cycle_id = ?
+       AND TRIM(COALESCE(responsible_unit, '')) = ?
+       AND TRIM(COALESCE(order_code, '')) <> ''${positionSql}`,
+    binds,
+  )
+  return rows.map((row) => row.code)
+}
+
+/** Distinct position ids that have downloaded assets matching the filters (unit / org / warehouse AND). */
+export async function listOfflinePositionIdsByScanFilters(
+  params: OfflineAssetScanFilters,
+): Promise<Set<number>> {
+  const { where, binds } = buildAssetScanWhere({
+    ...params,
+    wPositionId: undefined,
+    listFilter: undefined,
+  })
+  const rows = await query<{ id: number }>(
+    `SELECT DISTINCT w_position_id AS id
+     FROM offline_asset_scans
+     WHERE ${where.join(' AND ')} AND w_position_id IS NOT NULL`,
+    binds,
+  )
+  return new Set(rows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id)))
+}
+
 export async function listOfflineOrganizations(factoryId: number): Promise<ViewOrganization[]> {
   const rows = await query<OfflineOrganizationRow>(
     `SELECT id, code, name, factory_id, status
@@ -421,6 +483,11 @@ function buildAssetScanWhere(params: OfflineAssetScanFilters): {
     where.push('order_code = ?')
     binds.push(params.orderCode)
   }
+  const unit = params.responsibleUnit?.trim()
+  if (unit) {
+    where.push(`TRIM(COALESCE(responsible_unit, '')) = ?`)
+    binds.push(unit)
+  }
 
   const listFilter = params.listFilter ?? 'all'
   if (listFilter === 'pending') {
@@ -480,6 +547,7 @@ function mapAssetScanRow(row: OfflineAssetScanRow, cycleId: number): OfflineAsse
     vatNo: row.vat_no,
     orderCode: row.order_code,
     materialName: row.material_name,
+    responsibleUnit: row.responsible_unit,
     count: row.count ?? undefined,
     cycleId: row.cycle_id ?? cycleId,
     scanResult: row.scan_result,
@@ -510,12 +578,17 @@ export async function listOfflineAssetScans(
   const limit = params.limit
   const offset = params.offset ?? 0
   const pageBinds = [...binds]
+  // Scanned tab: newest scan first (local scan time, else the server's scan_at); other tabs by vatNo.
+  const orderSql =
+    params.listFilter === 'scanned'
+      ? `COALESCE(local_scan_at, CAST(strftime('%s', scan_at) AS INTEGER) * 1000) DESC, vat_no COLLATE NOCASE`
+      : `vat_no COLLATE NOCASE`
   let pageSql = `SELECT id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
             material_name, count, cycle_id, scan_result, scan_at, scan_by,
-            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
+            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty, responsible_unit
      FROM offline_asset_scans
      WHERE ${whereSql}
-     ORDER BY vat_no COLLATE NOCASE`
+     ORDER BY ${orderSql}`
   if (limit != null && limit > 0) {
     pageSql += ` LIMIT ? OFFSET ?`
     pageBinds.push(limit, offset)
@@ -660,7 +733,7 @@ export async function lookupOfflineAssetScansByVatNo(
   const rows = await query<OfflineAssetScanRow>(
     `SELECT id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
             material_name, count, cycle_id, scan_result, scan_at, scan_by,
-            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
+            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty, responsible_unit
      FROM offline_asset_scans
      WHERE cycle_id = ? AND vat_no = ?
      ORDER BY vat_no COLLATE NOCASE`,
@@ -680,7 +753,7 @@ export async function lookupOfflineAssetScansByVatNoFactory(
   const rows = await query<OfflineAssetScanRow>(
     `SELECT id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
             material_name, count, cycle_id, scan_result, scan_at, scan_by,
-            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
+            is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty, responsible_unit
      FROM offline_asset_scans
      WHERE cycle_id = ? AND vat_no = ? AND factory_id = ?
      ORDER BY warehouse_id, w_position COLLATE NOCASE, order_code COLLATE NOCASE`,
@@ -871,6 +944,8 @@ interface PendingScanFailLog {
   cycleId: number
   createdAt: string
   createdBy: string
+  scanWPositionId?: number | null
+  scanWPosition?: string | null
   syncError: string | null
 }
 
@@ -932,6 +1007,8 @@ export async function listPendingScanFailLogs(
       cycleId: cycle,
       createdAt: payload?.scanAt?.trim() || formatVietnamDateTime(new Date(row.created_at)),
       createdBy,
+      scanWPositionId: payload?.scanWPositionId ?? null,
+      scanWPosition: payload?.scanWPosition ?? null,
       syncError: row.sync_error,
     })
   }
@@ -1069,12 +1146,14 @@ export async function updateOfflineAssetScanProgress(
       }
       const merged = mergeScanFlags(existing, status)
       const effective = resolveLocalScanStatus(existing, status)
+      // When the row was scanned on this device (drives "newest scan first" on the scanned tab).
+      const localScanAt = status === 'pending' ? null : Date.now()
       if (scanBy) {
         await run(
           `UPDATE offline_asset_scans
            SET local_scan_status = ?, local_scan_qty = ?,
                is_complete = ?, is_success = ?, is_warning = ?, is_error = ?,
-               scan_by = ?
+               scan_by = ?, local_scan_at = ?
            WHERE id = ?`,
           [
             effective,
@@ -1084,6 +1163,7 @@ export async function updateOfflineAssetScanProgress(
             boolInt(merged.isWarning),
             boolInt(merged.isError),
             scanBy,
+            localScanAt,
             id,
           ],
         )
@@ -1091,7 +1171,8 @@ export async function updateOfflineAssetScanProgress(
         await run(
           `UPDATE offline_asset_scans
            SET local_scan_status = ?, local_scan_qty = ?,
-               is_complete = ?, is_success = ?, is_warning = ?, is_error = ?
+               is_complete = ?, is_success = ?, is_warning = ?, is_error = ?,
+               local_scan_at = ?
            WHERE id = ?`,
           [
             effective,
@@ -1100,6 +1181,7 @@ export async function updateOfflineAssetScanProgress(
             boolInt(merged.isSuccess),
             boolInt(merged.isWarning),
             boolInt(merged.isError),
+            localScanAt,
             id,
           ],
         )
@@ -1117,14 +1199,16 @@ export async function clearAllAssetScans(): Promise<void> {
 const APPEND_ASSET_SCAN_SQL = `INSERT OR REPLACE INTO offline_asset_scans (
           id, factory_id, warehouse_id, w_position_id, w_position, vat_no, order_code,
           material_name, count, cycle_id, scan_result, scan_at, scan_by,
-          is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          is_complete, is_success, is_warning, is_error, local_scan_status, local_scan_qty,
+          responsible_unit, local_scan_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 function assetScanInsertValues(
   cycleId: number,
   row: ViewAssetInfoScanResult & { id: string },
   localScanStatus: string,
   localScanQty: number | null,
+  localScanAt: number | null = null,
 ): (string | number | null)[] {
   return [
     row.id.trim(),
@@ -1146,6 +1230,8 @@ function assetScanInsertValues(
     boolInt(row.isError),
     localScanStatus,
     localScanQty,
+    row.responsibleUnit?.trim() || null,
+    localScanAt,
   ]
 }
 
@@ -1210,6 +1296,7 @@ export async function mergeAssetScanPageFromServer(
       is_success: number | null
       is_warning: number | null
       is_error: number | null
+      local_scan_at: number | null
     }
   >()
   if (ids.length) {
@@ -1227,9 +1314,10 @@ export async function mergeAssetScanPageFromServer(
         is_success: number | null
         is_warning: number | null
         is_error: number | null
+        local_scan_at: number | null
       }>(
         `SELECT id, count, local_scan_status, local_scan_qty, scan_by,
-                is_complete, is_success, is_warning, is_error
+                is_complete, is_success, is_warning, is_error, local_scan_at
          FROM offline_asset_scans
          WHERE id IN (${placeholders})`,
         chunk,
@@ -1244,6 +1332,7 @@ export async function mergeAssetScanPageFromServer(
           is_success: row.is_success,
           is_warning: row.is_warning,
           is_error: row.is_error,
+          local_scan_at: row.local_scan_at,
         })
       }
     }
@@ -1294,7 +1383,13 @@ export async function mergeAssetScanPageFromServer(
 
     return {
       statement: APPEND_ASSET_SCAN_SQL,
-      values: assetScanInsertValues(cycleId, mergedRow, localStatus, localQty),
+      values: assetScanInsertValues(
+        cycleId,
+        mergedRow,
+        localStatus,
+        localQty,
+        prev?.local_scan_at ?? null,
+      ),
     }
   })
   await executeSet(set)

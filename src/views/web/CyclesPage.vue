@@ -146,13 +146,14 @@ onMounted(() => {
 <template>
   <div class="cycles-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
     <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <Button icon="pi pi-sync" :label="t('cycle.sync')" size="large" :disabled="rows.length === 0"
+      <Button icon="pi pi-sync" :label="t('cycle.sync')" size="small" :disabled="rows.length === 0"
         @click="syncAllInCycles" />
-      <Button icon="pi pi-plus" :label="t('cycle.create')" size="large" @click="openCreate" />
+      <Button icon="pi pi-plus" :label="t('cycle.create')" size="small" @click="openCreate" />
     </div>
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
-      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover lazy paginator scrollable scroll-height="flex"
-        :rows="pageSize" :total-records="total" :first="page * pageSize" data-key="id"
+      <DataTable :value="loading ? skeletonRows : rows" :class="{ 'table-skeleton': loading }" striped-rows row-hover
+        lazy paginator scrollable scroll-height="flex" :rows="pageSize" :total-records="total" :first="page * pageSize"
+        data-key="id"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         :rowsPerPageOptions="[50, 100, 200]" @page="onPage">
@@ -183,11 +184,11 @@ onMounted(() => {
         <Column :header="t('common.actions')">
           <template #body="{ data }">
             <div v-if="!loading" class="flex flex-nowrap items-center gap-1">
-              <Button icon="pi pi-eye" size="large" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-eye" size="small" :raised="false" text rounded severity="secondary"
                 :aria-label="t('cycle.viewTitle')" @click="openView(data)" />
-              <Button icon="pi pi-pencil" size="large" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-pencil" size="small" :raised="false" text rounded severity="secondary"
                 :aria-label="t('cycle.editTitle')" @click="openEdit(data)" />
-              <Button icon="pi pi-trash" size="large" :raised="false" text rounded severity="danger"
+              <Button icon="pi pi-trash" size="small" :raised="false" text rounded severity="danger"
                 :aria-label="t('cycle.deleteTitle')" @click="openDelete(data)" />
             </div>
           </template>

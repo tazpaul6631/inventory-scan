@@ -117,7 +117,9 @@ export const SCHEMA_STATEMENTS = [
     is_warning INTEGER,
     is_error INTEGER,
     local_scan_status TEXT,
-    local_scan_qty REAL
+    local_scan_qty REAL,
+    responsible_unit TEXT,
+    local_scan_at INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS offline_scan_commands (
     id TEXT PRIMARY KEY,

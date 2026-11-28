@@ -122,13 +122,13 @@ onMounted(() => {
 
 <template>
   <div class="users-page page-fill gap-3 overflow-hidden" :style="{ paddingBottom: 'var(--safe-bottom)' }">
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
+    <div class="flex shrink-0 flex-wrap items-center gap-2 mt-2">
       <FloatLabel class="min-w-48 flex-1">
         <InputText id="user-search" v-model="keyword" class="w-full" @keydown.enter="search" />
         <label for="user-search">{{ t('user.searchPlaceholder') }}</label>
       </FloatLabel>
-      <Button icon="pi pi-search" outlined size="large" :loading="loading" @click="search" />
-      <Button icon="pi pi-plus" :label="t('user.add')" size="large" @click="openCreate" />
+      <Button icon="pi pi-search" outlined size="small" :loading="loading" @click="search" />
+      <Button icon="pi pi-plus" :label="t('user.add')" size="small" @click="openCreate" />
     </div>
 
     <div class="page-fill-panel table-wrap-fill rounded-2xl border border-line bg-white p-2 shadow-panel">
@@ -162,11 +162,11 @@ onMounted(() => {
         <Column :header="t('common.actions')">
           <template #body="{ data }">
             <div v-if="!loading" class="flex flex-nowrap items-center gap-1">
-              <Button icon="pi pi-eye" size="large" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-eye" size="small" :raised="false" text rounded severity="secondary"
                 :aria-label="t('user.viewTitle')" @click="openView(data)" />
-              <Button icon="pi pi-pencil" size="large" :raised="false" text rounded severity="secondary"
+              <Button icon="pi pi-pencil" size="small" :raised="false" text rounded severity="secondary"
                 :aria-label="t('user.editTitle')" @click="openEdit(data)" />
-              <Button icon="pi pi-trash" size="large" :raised="false" text rounded severity="danger"
+              <Button icon="pi pi-trash" size="small" :raised="false" text rounded severity="danger"
                 :aria-label="t('user.deleteTitle')" @click="openDelete(data)" />
             </div>
           </template>

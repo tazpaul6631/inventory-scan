@@ -22,6 +22,7 @@ const vi: MessageSchema = {
     mobileScan: 'Quét',
     web: 'Web',
     menu: 'Menu',
+    return: 'Trở về',
   },
   footer: {
     copyright: 'System • © 2026 By App Team',
@@ -177,15 +178,16 @@ const vi: MessageSchema = {
   },
   assetScanResult: {
     warehouseName: 'Kho',
-    wPosition: 'Vị trí',
+    wPosition: 'Vị trí thực tế',
     vatNo: 'VAT No',
     orderCode: 'Bộ phận',
     materialCode: 'Mã vật tư',
     materialName: 'Tên vật tư',
     materialEnName: 'Tên tiếng Anh',
     materialUnitNo: 'Đơn vị',
-    responsibleUnit: 'Bộ phận chịu trách nhiệm',
+    responsibleUnit: 'Bộ phận quản lý',
     scanCount: 'Quét',
+    scanWPosition: 'Vị trí quét',
     scanResult: 'Kết quả quét',
     scanName: 'Người quét',
     scanAt: 'Ngày quét',
@@ -209,7 +211,7 @@ const vi: MessageSchema = {
     loadUsersError: 'Không tải được danh sách người dùng',
     resetFiltersTitle: 'Xóa bộ lọc',
     filtersTitle: 'Bộ lọc',
-    isComplete: 'Xem tất cả',
+    isComplete: 'Đã quét kiểm kê',
   },
   cycle: {
     code: 'Code',
@@ -249,6 +251,7 @@ const vi: MessageSchema = {
     warehouse: 'Kho',
     position: 'Vị trí',
     organization: 'Bộ phận',
+    responsibleUnit: 'BP quản lý',
     changeLocationDialogTitle: 'Thay đổi thông tin kiểm kê',
     locationTitle: 'Chọn thông tin muốn kiểm kê',
     apply: 'Áp dụng',
@@ -326,7 +329,7 @@ const vi: MessageSchema = {
     scanEmpty: 'Không đọc được mã',
     useLiveScan: 'Trên web hãy dùng camera live scan',
     pageNotFound: 'Không tìm thấy trang',
-    pageNotFoundHint: 'Đường dẫn không đúng hoặc dữ liệu không còn tồn tại.',
+    pageNotFoundHint: 'Đường dẫn không đúng hoặc dữ liệu không tồn tại.',
   },
 }
 

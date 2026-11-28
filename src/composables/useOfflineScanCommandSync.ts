@@ -224,6 +224,8 @@ export function useOfflineScanCommandSync() {
           cycleId: item.cycleId,
           createdAt: item.createdAt,
           createdBy: item.createdBy,
+          scanWPositionId: item.scanWPositionId,
+          scanWPosition: item.scanWPosition,
           ...(image ? { image } : {}),
         })
       }

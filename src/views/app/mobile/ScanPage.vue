@@ -49,8 +49,11 @@ import {
   getOfflineWarehouseName,
   listOfflineAssetScans,
   listOfflineAssetProgressBuckets,
+  listOfflineOrderCodesByResponsibleUnit,
   listOfflineOrganizations,
+  listOfflinePositionIdsByScanFilters,
   listOfflinePositions,
+  listOfflineResponsibleUnits,
   countOfflineUnknownScanCodes,
   listOfflineUnknownScanCodes,
   listOfflineWarehouses,
@@ -137,10 +140,14 @@ const organization = ref<string | null>(null)
 const draftWarehouse = ref<string | null>(null)
 const draftPosition = ref<string | null>(null)
 const draftOrganization = ref<string | null>(null)
+const positionLabel = ref<string | null>(null)
+const responsibleUnit = ref<string | null>(null)
+const draftResponsibleUnit = ref<string | null>(null)
 const locationDialogOpen = ref(false)
 const warehouseOptions = ref<{ label: string; value: string }[]>([])
 const positionOptions = ref<{ label: string; value: string; complete: boolean }[]>([])
 const organizationOptions = ref<{ label: string; value: string; complete: boolean }[]>([])
+const responsibleUnitOptions = ref<{ label: string; value: string }[]>([])
 
 type ScanProgressCache = {
   key: string
@@ -153,6 +160,7 @@ let scanProgressInflight: Promise<ScanProgressCache | null> | null = null
 let scanProgressEpoch = 0
 let positionLoadId = 0
 let organizationLoadId = 0
+let responsibleUnitLoadId = 0
 
 function scanProgressKey(cycleId: number, factoryIdValue: number, warehouseId: number) {
   return `${cycleId}|${factoryIdValue}|${warehouseId}`
@@ -235,6 +243,7 @@ function cachedScanProgress(warehouseId: string | null): ScanProgressCache | nul
 const loadingWarehouses = ref(false)
 const loadingPositions = ref(false)
 const loadingOrganizations = ref(false)
+const loadingResponsibleUnits = ref(false)
 const loadingAssets = ref(false)
 const positionOverlayStyle = ref<Record<string, string>>({})
 const organizationOverlayStyle = ref<Record<string, string>>({})
@@ -291,7 +300,7 @@ const listFilterOptions = computed(() => [
 ])
 
 const filterDisabled = computed(
-  () => !warehouse.value || !(position.value || organization.value),
+  () => !warehouse.value || !(position.value || organization.value || responsibleUnit.value),
 )
 
 function formatQty(count: number, expect: number) {
@@ -324,7 +333,12 @@ function currentScanFilters(): OfflineAssetScanFilters | null {
   const organizationName = organization.value?.trim() || null
   const hasPosition = !Number.isNaN(wPositionId)
   const hasOrganization = Boolean(organizationName)
-  if (fid === undefined || cycleId === undefined || (!hasPosition && !hasOrganization)) {
+  const unitName = responsibleUnit.value?.trim() || null
+  if (
+    fid === undefined ||
+    cycleId === undefined ||
+    (!hasPosition && !hasOrganization && !unitName)
+  ) {
     return null
   }
   return {
@@ -333,6 +347,7 @@ function currentScanFilters(): OfflineAssetScanFilters | null {
     ...(Number.isNaN(warehouseId) ? {} : { warehouseId }),
     ...(hasPosition ? { wPositionId } : {}),
     ...(organizationName ? { name: organizationName } : {}),
+    ...(unitName ? { responsibleUnit: unitName } : {}),
   }
 }
 
@@ -504,20 +519,24 @@ function optionLabel(
   return options.find((item) => item.value === value)?.label || value
 }
 
-const locationSummary = computed(
-  () =>
-    `${optionLabel(warehouseOptions.value, warehouse.value)} -> ${optionLabel(organizationOptions.value, organization.value)} -> ${optionLabel(positionOptions.value, position.value)}`,
-)
+const locationSummary = computed(() => {
+  const base = `${optionLabel(warehouseOptions.value, warehouse.value)} -> ${optionLabel(responsibleUnitOptions.value, responsibleUnit.value)} -> ${optionLabel(organizationOptions.value, organization.value)} -> ${optionLabel(positionOptions.value, position.value)}`
+  return base
+})
 
 const draftLocationEmpty = computed(
-  () => !draftWarehouse.value && !draftPosition.value && !draftOrganization.value,
+  () =>
+    !draftWarehouse.value &&
+    !draftPosition.value &&
+    !draftOrganization.value &&
+    !draftResponsibleUnit.value,
 )
 
 const canApplyLocation = computed(() => {
   if (draftLocationEmpty.value) return true
   return (
     Boolean(draftWarehouse.value) &&
-    Boolean(draftPosition.value || draftOrganization.value)
+    Boolean(draftPosition.value || draftOrganization.value || draftResponsibleUnit.value)
   )
 })
 
@@ -550,6 +569,11 @@ watch(draftOrganization, () => {
 
 watch(draftPosition, () => {
   void loadOrganizations()
+})
+
+watch(draftResponsibleUnit, () => {
+  void loadOrganizations()
+  if (draftWarehouse.value) void loadPositions(draftWarehouse.value)
 })
 
 function scrollTableToTop() {
@@ -723,10 +747,15 @@ async function openLocationDialog() {
   draftWarehouse.value = warehouse.value
   draftPosition.value = position.value
   draftOrganization.value = organization.value
+  draftResponsibleUnit.value = responsibleUnit.value
   locationDialogOpen.value = true
   await loadWarehouses()
   if (draftWarehouse.value) {
-    await Promise.all([loadPositions(draftWarehouse.value), loadOrganizations()])
+    await Promise.all([
+      loadPositions(draftWarehouse.value),
+      loadOrganizations(),
+      loadResponsibleUnits(),
+    ])
   }
 }
 
@@ -734,8 +763,9 @@ async function restoreLocationDraftFromApplied() {
   draftWarehouse.value = warehouse.value
   draftPosition.value = position.value
   draftOrganization.value = organization.value
+  draftResponsibleUnit.value = responsibleUnit.value
   if (warehouse.value) {
-    await Promise.all([loadPositions(warehouse.value), loadOrganizations()])
+    await Promise.all([loadPositions(warehouse.value), loadOrganizations(), loadResponsibleUnits()])
   } else {
     positionOptions.value = []
   }
@@ -750,6 +780,7 @@ function clearAllLocationFilters() {
   draftWarehouse.value = null
   draftPosition.value = null
   draftOrganization.value = null
+  draftResponsibleUnit.value = null
   positionOptions.value = []
 }
 
@@ -759,7 +790,9 @@ function applyLocation() {
   if (draftLocationEmpty.value) {
     warehouse.value = null
     position.value = null
+    positionLabel.value = null
     organization.value = null
+    responsibleUnit.value = null
     locationDialogOpen.value = false
     unknownBadgeCount.value = 0
     listFilter.value = 'all'
@@ -769,7 +802,12 @@ function applyLocation() {
 
   warehouse.value = draftWarehouse.value
   position.value = draftPosition.value
+  // Capture the name now: positionOptions may be filtered / reloaded after applying.
+  positionLabel.value = draftPosition.value
+    ? (positionOptions.value.find((item) => item.value === draftPosition.value)?.label ?? null)
+    : null
   organization.value = draftOrganization.value
+  responsibleUnit.value = draftResponsibleUnit.value
   locationDialogOpen.value = false
   listFilter.value = 'all'
   void loadToCheckAssets(true)
@@ -786,8 +824,26 @@ async function loadPositions(warehouseId: string | null = draftWarehouse.value) 
   }
   loadingPositions.value = true
   try {
-    const rows = await listOfflinePositions(fid, Number(warehouseId))
+    const unit = draftResponsibleUnit.value?.trim() || ''
+    const cycleId = session.value?.cycleId
+    const orgName = draftOrganization.value?.trim() || ''
+    const [allRows, unitPositionIds] = await Promise.all([
+      listOfflinePositions(fid, Number(warehouseId)),
+      unit && cycleId != null
+        ? listOfflinePositionIdsByScanFilters({
+          cycleId,
+          factoryId: fid,
+          warehouseId: Number(warehouseId),
+          responsibleUnit: unit,
+          ...(orgName ? { name: orgName } : {}),
+        })
+        : Promise.resolve(null),
+    ])
     if (loadId !== positionLoadId) return
+    // With a responsibleUnit picked, keep only positions holding assets of that unit (and org if picked).
+    const rows = unitPositionIds
+      ? allRows.filter((item) => unitPositionIds.has(Number(item.id)))
+      : allRows
     positionOptions.value = rows
       .map((item) => {
         const wposition = item.wposition?.trim() || ''
@@ -868,8 +924,29 @@ async function loadOrganizations() {
   }
   loadingOrganizations.value = true
   try {
-    const rows = await listOfflineOrganizations(fid)
+    const unit = draftResponsibleUnit.value?.trim() || ''
+    const cycleId = session.value?.cycleId
+    const [allRows, unitOrderCodes] = await Promise.all([
+      listOfflineOrganizations(fid),
+      unit && cycleId != null
+        ? listOfflineOrderCodesByResponsibleUnit(
+          fid,
+          cycleId,
+          unit,
+          draftPosition.value ? Number(draftPosition.value) : undefined,
+        )
+        : Promise.resolve(null),
+    ])
     if (loadId !== organizationLoadId) return
+    // With a responsibleUnit picked, keep only organizations whose name/code is an order code of that unit.
+    const orderCodeSet = unitOrderCodes ? new Set(unitOrderCodes) : null
+    const rows = orderCodeSet
+      ? allRows.filter((item) => {
+        const name = item.name?.trim() || ''
+        const code = item.code?.trim() || ''
+        return (name && orderCodeSet.has(name)) || (code && orderCodeSet.has(code))
+      })
+      : allRows
     organizationOptions.value = rows
       .map((item) => {
         const code = item.code?.trim() || ''
@@ -900,6 +977,40 @@ async function loadOrganizations() {
     return
   }
   void applyOrganizationTicks(loadId)
+}
+
+/** Options = distinct responsibleUnit in downloaded scans; re-read on each open so new BE values appear. */
+async function loadResponsibleUnits() {
+  const loadId = ++responsibleUnitLoadId
+  const fid = factoryId.value
+  const cycleId = session.value?.cycleId
+  if (fid === undefined || cycleId == null) {
+    responsibleUnitOptions.value = []
+    return
+  }
+  loadingResponsibleUnits.value = true
+  try {
+    const names = await listOfflineResponsibleUnits(fid, cycleId)
+    if (loadId !== responsibleUnitLoadId) return
+    responsibleUnitOptions.value = names.map((name) => ({ label: name, value: name }))
+    if (
+      draftResponsibleUnit.value &&
+      !responsibleUnitOptions.value.some((item) => item.value === draftResponsibleUnit.value)
+    ) {
+      draftResponsibleUnit.value = null
+    }
+  } catch (err) {
+    if (loadId !== responsibleUnitLoadId) return
+    responsibleUnitOptions.value = []
+    toast.add({
+      severity: 'warn',
+      summary: readApiFailure(err) || t('auth.invalid'),
+      life: 2500,
+      closable: false,
+    })
+  } finally {
+    if (loadId === responsibleUnitLoadId) loadingResponsibleUnits.value = false
+  }
 }
 
 function organizationCounts(
@@ -947,11 +1058,14 @@ function paintOrganizationTicks(progress: ScanProgressCache | null) {
 const canScan = computed(
   () =>
     Boolean(warehouse.value) &&
-    Boolean(position.value || organization.value) &&
+    Boolean(position.value || organization.value || responsibleUnit.value) &&
     assetsTotal.value > 0,
 )
 
-watch([warehouse, position, organization, canScan], () => {
+/** Scanning needs a concrete applied position; organization / responsibleUnit alone only filter the list. */
+const canScanItems = computed(() => canScan.value && Boolean(position.value))
+
+watch([warehouse, position, organization, responsibleUnit, canScan], () => {
   void refreshUnknownBadgeCount()
 })
 
@@ -1142,6 +1256,12 @@ async function locationMatches(row: ScanTableRow): Promise<boolean> {
       row.orderCode || row.asset?.orderCode,
     )
     if (!owns) return false
+  }
+
+  const unitName = responsibleUnit.value?.trim()
+  if (unitName) {
+    const rowUnit = (row.asset?.responsibleUnit ?? '').trim()
+    if (rowUnit !== unitName) return false
   }
 
   return true
@@ -1553,6 +1673,8 @@ async function buildScanCommandPayload(
     scanCount,
     scanAt: formatVietnamDateTime(),
     scanBy,
+    scanWPositionId: position.value ? Number(position.value) : null,
+    scanWPosition: positionLabel.value,
   }
 }
 
@@ -1596,6 +1718,8 @@ async function queueAndMaybeSubmit(
         cycleId: payload.cycleId,
         createdAt: payload.scanAt?.trim() || formatVietnamDateTime(),
         createdBy: payload.scanBy,
+        scanWPositionId: payload.scanWPositionId,
+        scanWPosition: payload.scanWPosition,
         image: imageBlob,
       })
       if (res.success === false) return commandId
@@ -1878,7 +2002,7 @@ function confirmResultDialog() {
 
 useBarcodeWedge(async (value) => {
   if (
-    !canScan.value ||
+    !canScanItems.value ||
     checking.value ||
     savingCode.value ||
     liveScanOpen.value ||
@@ -1891,12 +2015,12 @@ useBarcodeWedge(async (value) => {
 })
 
 async function saveManual(): Promise<string | null> {
-  if (!canScan.value || savingCode.value) return null
+  if (!canScanItems.value || savingCode.value) return null
   return saveCode(manual.value, 'manual', 'MANUAL')
 }
 
 async function openManualDialog() {
-  if (!canScan.value) return
+  if (!canScanItems.value) return
   manualCloseAfterSubmit = false
   // Plain manual entry: never carry a draft photo.
   await discardPendingEvidence()
@@ -1918,7 +2042,7 @@ function closeManualDialog() {
 
 /** Toolbar camera: shoot first, then open dialog to type vatNo and bind photo. */
 async function startEvidenceCaptureFlow() {
-  if (!canScan.value || !draftPosition.value || capturingEvidence.value || savingCode.value) return
+  if (!canScanItems.value || capturingEvidence.value || savingCode.value) return
   const cycleId = session.value?.cycleId
   if (cycleId === undefined) {
     toastNeedSession()
@@ -1950,7 +2074,7 @@ async function clearManualEvidence() {
 
 async function submitManualDialog() {
   const code = manual.value.trim()
-  if (!canScan.value || !code || savingCode.value) return
+  if (!canScanItems.value || !code || savingCode.value) return
   if (pendingEvidence.value && pendingEvidence.value.vatNo !== code) {
     pendingEvidence.value = { ...pendingEvidence.value, vatNo: code }
   }
@@ -1965,7 +2089,7 @@ async function checkQR() {
   if (
     checking.value ||
     savingCode.value ||
-    !canScan.value ||
+    !canScanItems.value ||
     liveScanOpen.value ||
     resultOpen.value
   ) {
@@ -2024,6 +2148,8 @@ async function checkQR() {
           <p class="scan-location-bar__legend m-0">
             {{ t('scan.warehouse') }}
             <span aria-hidden="true"> -> </span>
+            {{ t('scan.responsibleUnit') }}
+            <span aria-hidden="true"> -> </span>
             {{ t('scan.organization') }}
             <span aria-hidden="true"> -> </span>
             {{ t('scan.position') }}
@@ -2043,6 +2169,15 @@ async function checkQR() {
               option-label="label" option-value="value" class="w-full" :loading="loadingWarehouses"
               @before-show="loadWarehouses" @update:model-value="onDraftWarehouseChange" />
             <label for="warehouse">{{ t('scan.warehouse') }}</label>
+          </FloatLabel>
+        </div>
+
+        <div class="mb-3 min-w-0">
+          <FloatLabel class="min-w-0 w-full">
+            <Select input-id="responsibleUnit" v-model="draftResponsibleUnit" :options="responsibleUnitOptions"
+              option-label="label" option-value="value" class="w-full" filter show-clear :disabled="!draftWarehouse"
+              :loading="loadingResponsibleUnits" @before-show="loadResponsibleUnits" />
+            <label for="responsibleUnit">{{ t('scan.responsibleUnit') }}</label>
           </FloatLabel>
         </div>
 
@@ -2178,11 +2313,11 @@ async function checkQR() {
         </span>
       </span>
       <Button icon="pi pi-camera" size="large" :aria-label="t('scan.captureEvidence')" :loading="capturingEvidence"
-        :disabled="!canScan || !draftPosition || capturingEvidence || savingCode" @click="startEvidenceCaptureFlow" />
-      <Button icon="pi pi-file-edit" size="large" :disabled="!canScan || !draftPosition"
-        :aria-label="t('scan.manualTitle')" @click="openManualDialog" />
+        :disabled="!canScanItems || capturingEvidence || savingCode" @click="startEvidenceCaptureFlow" />
+      <Button icon="pi pi-file-edit" size="large" :disabled="!canScanItems" :aria-label="t('scan.manualTitle')"
+        @click="openManualDialog" />
       <Button class="w-full" :label="t('scan.checkQRCode')" icon="pi pi-qrcode" size="large" :loading="checking"
-        :disabled="checking || !canScan || !draftPosition" @click="checkQR" />
+        :disabled="checking || !canScanItems" @click="checkQR" />
     </div>
 
     <Dialog v-model:visible="manualDialogOpen" modal class="scan-page-dialog scan-page-dialog--xs"
@@ -2196,7 +2331,7 @@ async function checkQR() {
       <div class="mt-2 flex items-center gap-2" :class="{ 'mt-4': pendingEvidence }">
         <FloatLabel class="min-w-0 flex-1">
           <InputText id="manual-input" name="manual-input" :model-value="manual" class="w-full uppercase"
-            autocapitalize="characters" :disabled="!canScan"
+            autocapitalize="characters" :disabled="!canScanItems"
             @update:model-value="manual = String($event ?? '').toUpperCase()" @keydown.enter="submitManualDialog" />
           <label for="manual-input">{{ pendingEvidence ? t('scan.pendingEvidencePlaceholder') :
             t('scan.manualPlaceholder')
@@ -2208,7 +2343,7 @@ async function checkQR() {
           @click="clearManualEvidence" />
         <Button v-else :label="t('common.cancel')" size="large" severity="secondary" @click="closeManualDialog" />
         <Button :label="t('scan.send')" size="large"
-          :disabled="!pendingEvidence && !canScan || !manual.trim() || savingCode" @click="submitManualDialog" />
+          :disabled="!pendingEvidence && !canScanItems || !manual.trim() || savingCode" @click="submitManualDialog" />
       </div>
     </Dialog>
 

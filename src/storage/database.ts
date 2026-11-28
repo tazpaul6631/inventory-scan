@@ -104,6 +104,20 @@ async function ensureOfflineAssetScanProgressColumns(): Promise<void> {
   )
 }
 
+/** Idempotent — DB đã tạo trước khi có cột responsible_unit / local_scan_at. */
+async function ensureOfflineAssetScanResponsibleUnitColumn(): Promise<void> {
+  await ensureColumn(
+    'offline_asset_scans',
+    'responsible_unit',
+    `ALTER TABLE offline_asset_scans ADD COLUMN responsible_unit TEXT`,
+  )
+  await ensureColumn(
+    'offline_asset_scans',
+    'local_scan_at',
+    `ALTER TABLE offline_asset_scans ADD COLUMN local_scan_at INTEGER`,
+  )
+}
+
 async function ensureOfflinePositionCountColumns(): Promise<void> {
   await ensureColumn(
     'offline_positions',
@@ -162,6 +176,7 @@ async function applySchema(): Promise<void> {
   }
   // Always ensure progress columns exist (handles DBs already at SCHEMA_VERSION).
   await ensureOfflineAssetScanProgressColumns()
+  await ensureOfflineAssetScanResponsibleUnitColumn()
   await ensureOfflinePositionCountColumns()
   const rows = await query<{ version: number }>('SELECT version FROM schema_meta LIMIT 1')
   if (!rows.length) {

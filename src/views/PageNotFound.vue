@@ -44,9 +44,9 @@ function goHome() {
                 <LocaleSelect :compact="shell === 'mobile'" />
             </div>
             <p class="m-0 text-4xl font-bold tracking-tight text-[#06755b]">404</p>
-            <h1 class=" m-0 text-2xl">{{ t('errors.pageNotFound') }}</h1>
+            <h1 class="m-0 text-2xl">{{ t('errors.pageNotFound') }}</h1>
             <p class="m-0 text-muted">{{ t('errors.pageNotFoundHint') }}</p>
-            <Button :label="auth.isLoggedIn ? t('nav.dashboard') : t('auth.login')"
+            <Button :label="auth.isLoggedIn ? t('nav.return') : t('auth.login')"
                 :icon="auth.isLoggedIn ? 'pi pi-home' : 'pi pi-sign-in'" size="large" @click="goHome" />
         </div>
     </div>
